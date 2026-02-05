@@ -1,84 +1,68 @@
 import streamlit as st
 from datetime import datetime
-import urllib.parse
+import time
 
-# --- Configuração da página ---
-st.set_page_config(page_title="Solicitação Doc. IRPF", page_icon="📄")
+# --- Configuração da Página (Visual Clean) ---
+st.set_page_config(page_title="Envio de Documentos", page_icon="📂")
 
-st.title("📄 Gerador de Solicitação IRPF")
-st.write("Selecione os perfis do cliente para gerar a lista de documentos.")
+st.markdown("""
+    <style>
+        .stButton>button {
+            width: 100%;
+            background-color: #0099ff;
+            color: white;
+            font-size: 20px;
+            padding: 10px;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
-# --- Entradas de Dados ---
-nome_cliente = st.text_input("Nome do Cliente", "Prezado(a) Cliente")
-
-st.header("Perfil do Cliente")
-col1, col2 = st.columns(2)
-
-with col1:
-    tem_salario = st.checkbox("Trabalho Assalariado (CLT)", value=True)
-    tem_dependentes = st.checkbox("Possui Dependentes")
-    paga_aluguel = st.checkbox("Mora de Aluguel")
-
-with col2:
-    gastos_saude = st.checkbox("Gastos com Saúde")
-    gastos_educacao = st.checkbox("Gastos com Educação")
-    investimentos = st.checkbox("Investimentos/Bancos")
-
-# --- Lógica de Construção do Texto ---
-def gerar_texto():
-    ano_atual = datetime.now().year
-    
-    texto = f"Olá, *{nome_cliente}*! Tudo bem?\n\n"
-    texto += f"Chegou a hora de prepararmos sua declaração do Imposto de Renda {ano_atual}.\n"
-    texto += "Para garantir o melhor resultado possível e evitar a malha fina, por favor, me envie os seguintes documentos:\n\n"
-    
-    texto += "*1. BÁSICOS*\n"
-    texto += "- [ ] Última declaração de IR (se tiver)\n"
-    texto += "- [ ] Comprovante de endereço atualizado\n"
-    texto += "- [ ] Título de eleitor\n\n"
-
-    if tem_salario:
-        texto += "*2. RENDA*\n"
-        texto += "- [ ] Informe de Rendimentos da(s) empresa(s) onde trabalhou\n\n"
-
-    if investimentos:
-        texto += "*3. BANCOS E APLICAÇÕES*\n"
-        texto += "- [ ] Informe de Rendimentos Financeiros (Bancos e Corretoras - baixar no app do banco)\n\n"
-
-    # Se tiver despesas dedutíveis
-    if gastos_saude or gastos_educacao or paga_aluguel or tem_dependentes:
-        texto += "*4. DESPESAS E DEDUÇÕES*\n"
-        
-        if gastos_saude:
-            texto += "- [ ] Recibos médicos/dentistas/psicólogos (com CPF do profissional)\n"
-            texto += "- [ ] Extrato anual do Plano de Saúde para IR\n"
-            
-        if gastos_educacao:
-            texto += "- [ ] Comprovantes de mensalidade escolar/faculdade (Nome e CNPJ da instituição)\n"
-            
-        if paga_aluguel:
-            texto += "- [ ] Contrato de aluguel e comprovantes de pagamento (com CPF do proprietário)\n"
-            
-        if tem_dependentes:
-            texto += "- [ ] CPF e data de nascimento de todos os dependentes\n"
-            texto += "- [ ] Despesas médicas/escolares dos dependentes\n"
-
-    texto += "\nQualquer dúvida sobre os documentos, é só me chamar. Fico no aguardo! 🚀"
-    return texto
-
-# --- Exibição do Resultado ---
+st.title("📂 Envio de Documentos IRPF")
+st.write("Olá! Use este canal seguro para enviar seus documentos para a declaração.")
 st.divider()
-st.subheader("Sua Mensagem:")
 
-mensagem_final = gerar_texto()
+# --- 1. Identificação ---
+st.header("1. Seus Dados")
+nome_cliente = st.text_input("Seu Nome Completo", placeholder="Ex: João da Silva")
+cpf_cliente = st.text_input("Seu CPF", placeholder="000.000.000-00")
 
-# Mostra o texto na tela para você conferir se quiser
-st.text_area("Pré-visualização do texto:", value=mensagem_final, height=250)
+# --- 2. Upload de Arquivos ---
+st.header("2. Anexar Documentos")
+st.info("Você pode selecionar vários arquivos de uma vez ou tirar fotos.")
 
-# Cria o link mágico do WhatsApp
-texto_codificado = urllib.parse.quote(mensagem_final)
-link_whatsapp = f"https://wa.me/?text={texto_codificado}"
+arquivos = st.file_uploader(
+    "Clique aqui para buscar arquivos ou tirar foto", 
+    type=['pdf', 'png', 'jpg', 'jpeg'], 
+    accept_multiple_files=True
+)
 
-# Botão de Ação
-st.markdown("###") # Espaço vazio
-st.link_button("📲 Enviar direto no WhatsApp", link_whatsapp, type="primary")
+# --- 3. Processamento (Simulação) ---
+st.divider()
+
+if st.button("📤 Enviar Documentos Agora"):
+    if not nome_cliente or not arquivos:
+        st.error("⚠️ Por favor, preencha seu nome e anexe pelo menos um documento.")
+    else:
+        # Barra de progresso para dar feedback visual ao cliente
+        barra = st.progress(0)
+        status = st.empty()
+        
+        status.write("Iniciando upload seguro...")
+        time.sleep(1)
+        
+        # Simulação do processamento de cada arquivo
+        for i, arquivo in enumerate(arquivos):
+            # AQUI ENTRARIA O CÓDIGO DO GOOGLE DRIVE
+            # O sistema criaria a pasta: "IRPF 2026 / Nome do Cliente"
+            # E salvaria: arquivo.name
+            
+            progresso = int((i + 1) / len(arquivos) * 100)
+            barra.progress(progresso)
+            status.write(f"Enviando: {arquivo.name}...")
+            time.sleep(0.5) # Simula tempo de envio
+            
+        barra.progress(100)
+        status.success(f"✅ Sucesso! {len(arquivos)} documentos enviados para a contabilidade.")
+        st.balloons()
+        
+        st.write(f"Obrigado, **{nome_cliente}**. Recebemos seus arquivos e já vamos iniciar a análise.")
