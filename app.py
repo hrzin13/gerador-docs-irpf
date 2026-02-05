@@ -1,68 +1,67 @@
 import streamlit as st
-from datetime import datetime
-import time
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+import datetime
 
-# --- Configuração da Página (Visual Clean) ---
+# --- Configurações ---
+# ID da pasta no Google Drive (é aquele código no final do link quando você abre a pasta)
+# Exemplo: drive.google.com/drive/folders/1aBcDeFgHiJkLmNoPqRsTuVwXyZ
+PASTA_ID = st.secrets["pasta_id"] 
+
+# Configuração da página
 st.set_page_config(page_title="Envio de Documentos", page_icon="📂")
 
-st.markdown("""
-    <style>
-        .stButton>button {
-            width: 100%;
-            background-color: #0099ff;
-            color: white;
-            font-size: 20px;
-            padding: 10px;
-        }
-    </style>
-""", unsafe_allow_html=True)
+# --- Função de Conexão com o Drive ---
+def upload_para_drive(arquivo, nome_cliente):
+    # Autenticação usando os "Segredos" do Streamlit
+    creds_dict = st.secrets["gcp_service_account"]
+    creds = service_account.Credentials.from_service_account_info(
+        creds_dict, scopes=['https://www.googleapis.com/auth/drive']
+    )
+    service = build('drive', 'v3', credentials=creds)
 
+    # Criação do nome do arquivo: "João Silva - cpf.pdf"
+    nome_final = f"{nome_cliente} - {arquivo.name}"
+
+    file_metadata = {
+        'name': nome_final,
+        'parents': [PASTA_ID]
+    }
+    
+    media = MediaIoBaseUpload(arquivo, mimetype=arquivo.type)
+    
+    arquivo_drive = service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields='id'
+    ).execute()
+    
+    return arquivo_drive.get('id')
+
+# --- Interface ---
 st.title("📂 Envio de Documentos IRPF")
-st.write("Olá! Use este canal seguro para enviar seus documentos para a declaração.")
+st.write("Envie seus comprovantes diretamente para nossa nuvem segura.")
 st.divider()
 
-# --- 1. Identificação ---
-st.header("1. Seus Dados")
-nome_cliente = st.text_input("Seu Nome Completo", placeholder="Ex: João da Silva")
-cpf_cliente = st.text_input("Seu CPF", placeholder="000.000.000-00")
+nome_cliente = st.text_input("Seu Nome Completo")
+arquivos = st.file_uploader("Anexar Documentos", accept_multiple_files=True)
 
-# --- 2. Upload de Arquivos ---
-st.header("2. Anexar Documentos")
-st.info("Você pode selecionar vários arquivos de uma vez ou tirar fotos.")
-
-arquivos = st.file_uploader(
-    "Clique aqui para buscar arquivos ou tirar foto", 
-    type=['pdf', 'png', 'jpg', 'jpeg'], 
-    accept_multiple_files=True
-)
-
-# --- 3. Processamento (Simulação) ---
-st.divider()
-
-if st.button("📤 Enviar Documentos Agora"):
+if st.button("📤 Enviar Documentos"):
     if not nome_cliente or not arquivos:
-        st.error("⚠️ Por favor, preencha seu nome e anexe pelo menos um documento.")
+        st.error("Preencha seu nome e anexe os arquivos.")
     else:
-        # Barra de progresso para dar feedback visual ao cliente
         barra = st.progress(0)
         status = st.empty()
         
-        status.write("Iniciando upload seguro...")
-        time.sleep(1)
-        
-        # Simulação do processamento de cada arquivo
+        total = len(arquivos)
         for i, arquivo in enumerate(arquivos):
-            # AQUI ENTRARIA O CÓDIGO DO GOOGLE DRIVE
-            # O sistema criaria a pasta: "IRPF 2026 / Nome do Cliente"
-            # E salvaria: arquivo.name
-            
-            progresso = int((i + 1) / len(arquivos) * 100)
-            barra.progress(progresso)
-            status.write(f"Enviando: {arquivo.name}...")
-            time.sleep(0.5) # Simula tempo de envio
-            
-        barra.progress(100)
-        status.success(f"✅ Sucesso! {len(arquivos)} documentos enviados para a contabilidade.")
+            status.write(f"Enviando {arquivo.name}...")
+            try:
+                upload_para_drive(arquivo, nome_cliente)
+                barra.progress((i + 1) / total)
+            except Exception as e:
+                st.error(f"Erro ao enviar {arquivo.name}: {e}")
+                
+        status.success("✅ Tudo pronto! Seus documentos foram salvos com sucesso.")
         st.balloons()
-        
-        st.write(f"Obrigado, **{nome_cliente}**. Recebemos seus arquivos e já vamos iniciar a análise.")
