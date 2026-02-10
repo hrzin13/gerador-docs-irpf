@@ -4,88 +4,72 @@ import os
 import tempfile
 import traceback
 import io
-from PIL import Image
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-st.set_page_config(page_title="Scanner IRPF Ultimate", layout="centered")
+st.set_page_config(page_title="Scanner IRPF Pro", layout="centered")
 
 # --- 1. CONFIGURAÇÃO (Blindada) ---
 def configurar_apis():
-    # 1. Checa ConvertAPI
+    # Verifica Secrets
     if "convertapi" not in st.secrets or "secret" not in st.secrets["convertapi"]:
-        st.error("❌ Erro nos Secrets: Falta [convertapi] ou a chave 'secret'.")
+        st.error("❌ Falta o segredo do ConvertAPI.")
         return False
     
-    # Configura a senha (Força bruta para garantir)
+    # Configura Senha
     chave = st.secrets["convertapi"]["secret"]
     convertapi.api_secret = chave
     convertapi.api_credentials = chave 
     return True
 
-# --- 2. PASSO A PASSO: FOTO -> PDF A4 -> PDF OCR ---
-def processar_documento_completo(arquivo_upload):
-    if not convertapi.api_secret:
-        st.error("Sem senha da API.")
-        return None
-
-    temp_filenames = [] # Lista para apagar arquivos depois
+# --- 2. FUNÇÃO MÁGICA: MANDA DIRETO PRA NUVEM ---
+def converter_na_nuvem(arquivo_upload):
     try:
-        # --- ETAPA 1: CONVERSÃO LOCAL (FOTO -> PDF A4) ---
-        # Isso garante que a dimensão fique perfeita (A4) sem gastar crédito
-        img = Image.open(arquivo_upload)
-        if img.mode != 'RGB': img = img.convert('RGB')
-        
-        # Cria folha A4 Branca (300 DPI)
-        a4_w, a4_h = 2480, 3508
-        canvas = Image.new('RGB', (a4_w, a4_h), (255, 255, 255))
-        
-        # Redimensiona imagem para caber na folha
-        img.thumbnail((a4_w - 200, a4_h - 200), Image.Resampling.LANCZOS)
-        
-        # Centraliza
-        x = (a4_w - img.width) // 2
-        y = (a4_h - img.height) // 2
-        canvas.paste(img, (x, y))
-        
-        # Salva esse PDF "mudo" (sem texto) temporariamente
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_local:
-            canvas.save(tmp_local.name, "PDF", resolution=300)
-            pdf_local_path = tmp_local.name
-            temp_filenames.append(pdf_local_path)
+        # Define a extensão do arquivo (jpg, png, pdf)
+        nome_arquivo = arquivo_upload.name
+        extensao = os.path.splitext(nome_arquivo)[1].lower()
+        if not extensao: extensao = ".jpg"
 
-        # --- ETAPA 2: NUVEM (PDF MUDO -> PDF FALANTE/OCR) ---
-        # Agora mandamos o PDF pronto pro ConvertAPI só colocar o texto
+        # Salva o arquivo original temporariamente
+        with tempfile.NamedTemporaryFile(delete=False, suffix=extensao) as temp_input:
+            temp_input.write(arquivo_upload.getvalue())
+            input_path = temp_input.name
+
+        # --- AQUI É O PULO DO GATO ---
+        # Mandamos direto pro ConvertAPI com os parâmetros de OCR ligados
+        # Eles se viram pra deixar A4 e Ler o texto
         
-        result = convertapi.convert('pdf', {
-            'File': pdf_local_path,
-            'Ocr': 'true',            # Liga o leitor
-            'OcrLanguage': 'pt',      # <--- O SEGREDO! (Português)
-            'OcrMode': 'always',      # Obriga a ler tudo
+        parametros = {
+            'File': input_path,
+            'Ocr': 'true',            # Liga o leitor de texto
+            'OcrLanguage': 'pt',      # Força Português (BR)
+            'PageSize': 'a4',         # Força sair em tamanho A4
+            'ScaleProportional': 'true', # Ajusta a imagem pra caber na folha
             'StoreFile': 'true'
-        })
+        }
+
+        # Faz a conversão (Seja imagem ou PDF, a saída é sempre PDF OCR)
+        result = convertapi.convert('pdf', parametros)
         
-        # Baixa o PDF final
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_final:
-            result.save_files(tmp_final.name)
-            pdf_final_path = tmp_final.name
-            temp_filenames.append(pdf_final_path)
+        # Baixa o resultado
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_output:
+            result.save_files(temp_output.name)
+            output_path = temp_output.name
             
-        with open(pdf_final_path, 'rb') as f:
+        with open(output_path, 'rb') as f:
             pdf_bytes = f.read()
             
+        # Limpeza
+        if os.path.exists(input_path): os.remove(input_path)
+        if os.path.exists(output_path): os.remove(output_path)
+        
         return io.BytesIO(pdf_bytes)
 
     except Exception as e:
-        st.error(f"Erro no processamento: {e}")
-        st.write(traceback.format_exc())
+        st.error(f"Erro na API: {e}")
         return None
-    finally:
-        # Limpa a sujeira do disco
-        for f in temp_filenames:
-            if os.path.exists(f): os.remove(f)
 
 # --- 3. GOOGLE DRIVE ---
 def get_drive_service():
@@ -116,7 +100,7 @@ def upload_drive(service, file_obj, name, folder_id, mime):
         return False
 
 # --- 4. TELA ---
-st.title("📄 Scanner IRPF (OCR PT-BR)")
+st.title("📄 Scanner IRPF (Direto na Nuvem)")
 apis_ok = configurar_apis()
 
 # SEU ID DA PASTA AQUI
@@ -135,7 +119,7 @@ if apis_ok:
         
         files = st.file_uploader("Documentos", accept_multiple_files=True)
         
-        if files and st.button("Processar"):
+        if files and st.button("Digitalizar e Enviar"):
             service = get_drive_service()
             
             # Busca/Cria Pasta
@@ -149,20 +133,16 @@ if apis_ok:
                 status = st.empty()
                 
                 for i, f in enumerate(files):
-                    status.text(f"Convertendo {f.name}...")
+                    status.text(f"Enviando pra API: {f.name}...")
                     
-                    # Se for imagem -> Faz o Processo Completo (Local + Nuvem)
-                    if f.type.startswith('image/'):
-                        pdf_ocr = processar_documento_completo(f)
-                        if pdf_ocr:
-                            nome = f.name.rsplit('.', 1)[0] + ".pdf"
-                            upload_drive(service, pdf_ocr, nome, folder_id, 'application/pdf')
-                        else:
-                            st.warning(f"Falha na conversão de {f.name}. Enviando original.")
-                            upload_drive(service, f, f.name, folder_id, f.type)
+                    # Manda TUDO pra API (Imagem ou PDF)
+                    pdf_ocr = converter_na_nuvem(f)
                     
-                    # Se já for PDF -> Manda direto (ou poderia mandar pro OCR também se quisesse)
+                    if pdf_ocr:
+                        nome = f.name.rsplit('.', 1)[0] + ".pdf"
+                        upload_drive(service, pdf_ocr, nome, folder_id, 'application/pdf')
                     else:
+                        st.warning(f"Falha na API com {f.name}. Enviando original.")
                         upload_drive(service, f, f.name, folder_id, f.type)
                     
                     bar.progress((i+1)/len(files))
