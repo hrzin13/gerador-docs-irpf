@@ -70,7 +70,7 @@ def fazer_upload(service, arquivo, folder_id_cpf):
 st.title("📂 Envio de Documentos IRPF")
 
 # SEU ID DA PASTA PRINCIPAL AQUI
-FOLDER_ID_RAIZ = "COLOQUE_SEU_ID_AQUI_SE_NAO_ESTIVER_NOS_SECRETS"
+FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ"
 # Ou se estiver nos secrets: st.secrets["google_auth"]["folder_id"]
 
 if "cpf_atual" not in st.session_state:
