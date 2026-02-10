@@ -22,8 +22,6 @@ def configurar_apis():
     convertapi.api_credentials = chave 
     return True
 
-# --- 2. A MÁGICA (OCR EM PORTUGUÊS) ---
-def converter_para_pdf_pesquisavel(arquivo_upload):
 # --- VERSÃO TURBO: LIMPA A IMAGEM ANTES DE LER ---
 def converter_na_nuvem(arquivo_upload):
     try:
