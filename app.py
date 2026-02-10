@@ -32,7 +32,7 @@ def get_drive_service():
         return None
     return build('drive', 'v3', credentials=creds)
 
-# --- 2. FUNÇÃO MÁGICA: FOTO -> PDF PESQUISÁVEL ---
+# --- 2. FUNÇÃO MÁGICA: FOTO -> PDF PESQUISÁVEL (CORRIGIDA) ---
 def converter_imagem_para_pdf_ocr(image_file):
     try:
         # Cria um arquivo temporário para a imagem
@@ -43,21 +43,29 @@ def converter_imagem_para_pdf_ocr(image_file):
         output_pdf_path = tmp_img_path.replace(".jpg", ".pdf")
         
         # Roda o OCR (Transforma em PDF pesquisável)
-        # language='por' usa português
-        ocrmypdf.ocr(tmp_img_path, output_pdf_path, language='por', deskew=True, force_ocr=True)
+        # CORREÇÃO AQUI: Adicionei 'image_dpi=300' para aceitar prints de tela
+        ocrmypdf.ocr(
+            tmp_img_path, 
+            output_pdf_path, 
+            language='por', 
+            deskew=True, 
+            force_ocr=True, 
+            image_dpi=300 
+        )
         
         # Lê o PDF gerado de volta para a memória
         with open(output_pdf_path, "rb") as f:
             pdf_bytes = f.read()
             
-        # Limpa a sujeira (apaga arquivos temporários)
+        # Limpa a sujeira
         os.remove(tmp_img_path)
         os.remove(output_pdf_path)
         
-        return io.BytesIO(pdf_bytes) # Retorna como arquivo pronto para upload
+        return io.BytesIO(pdf_bytes)
         
     except Exception as e:
-        st.warning(f"Não foi possível converter {image_file.name} com OCR. Enviando original... Erro: {e}")
+        # Se der erro, mostra no log mas não para o app
+        print(f"Erro OCR: {e}") 
         return None
 
 # --- 3. GERENCIADOR DE PASTAS (CPF) ---
