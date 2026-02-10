@@ -2,18 +2,19 @@ import streamlit as st
 import convertapi
 import os
 import tempfile
+import traceback
 import io
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-st.set_page_config(page_title="Prova Real (Word)", layout="centered")
+st.set_page_config(page_title="Scanner Blindado (Img->Word->PDF)", layout="centered")
 
 # --- 1. CONFIGURAÇÃO ---
 def configurar_apis():
-    if "convertapi" not in st.secrets:
-        st.error("❌ Falta [convertapi] nos Secrets.")
+    if "convertapi" not in st.secrets or "secret" not in st.secrets["convertapi"]:
+        st.error("❌ ERRO: Falta o segredo do ConvertAPI.")
         return False
     
     chave = st.secrets["convertapi"]["secret"]
@@ -21,53 +22,78 @@ def configurar_apis():
     convertapi.api_credentials = chave 
     return True
 
-# --- 2. CONVERSÃO PARA WORD (DOCX) ---
-def converter_para_word(arquivo_upload):
+# --- 2. O PULO DO GATO: IMAGEM -> WORD -> PDF ---
+def converter_salto_duplo(arquivo_upload):
     try:
-        nome = arquivo_upload.name
-        ext = os.path.splitext(nome)[1].lower() or ".jpg"
+        nome_arquivo = arquivo_upload.name
+        extensao = os.path.splitext(nome_arquivo)[1].lower() or ".jpg"
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as t_in:
-            t_in.write(arquivo_upload.getvalue())
-            input_path = t_in.name
+        # Salva o arquivo original temporariamente
+        with tempfile.NamedTemporaryFile(delete=False, suffix=extensao) as temp_input:
+            temp_input.write(arquivo_upload.getvalue())
+            input_path = temp_input.name
+            
+        temp_word_path = None
+        output_pdf_path = None
 
-        # MANDA CONVERTER PRA WORD (DOCX)
-        # Assim a gente VÊ se o texto foi lido mesmo
-        parametros = {
+        # --- PASSO 1: FOTO -> WORD (Gasta 1 crédito) ---
+        # Aqui a gente força a criação do texto editável
+        st.toast(f"Passo 1/2: Criando texto Word para {nome_arquivo}...")
+        
+        result_word = convertapi.convert('docx', {
             'File': input_path,
             'Ocr': 'true',
-            'OcrLanguage': 'pt',     # Português
-            'ImagePreprocessing': 'true', # Limpeza
-            'StoreFile': 'true'
-        }
+            'OcrLanguage': 'pt',
+            'ImagePreprocessing': 'true', # Limpeza pesada
+            'RemoveNoise': 'true',
+            'ScaleImage': 'true'
+        })
+        
+        # Salva o Word temporário
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as temp_word:
+            result_word.save_files(temp_word.name)
+            temp_word_path = temp_word.name
 
-        # Pede 'docx' em vez de 'pdf'
-        result = convertapi.convert('docx', parametros)
+        # --- PASSO 2: WORD -> PDF (Gasta +1 crédito) ---
+        # Agora pegamos o texto garantido do Word e selamos num PDF
+        st.toast(f"Passo 2/2: Gerando PDF final para {nome_arquivo}...")
         
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as t_out:
-            result.save_files(t_out.name)
-            output_path = t_out.name
+        result_pdf = convertapi.convert('pdf', {
+            'File': temp_word_path,
+            'PdfVersion': '1.7', # Versão moderna
+            'PdfA': 'true'       # PDF/A (Padrão de arquivo eterno)
+        })
+
+        # Baixa o PDF final
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_pdf:
+            result_pdf.save_files(temp_pdf.name)
+            output_pdf_path = temp_pdf.name
             
-        with open(output_path, 'rb') as f:
-            arquivo_bytes = f.read()
+        with open(output_pdf_path, 'rb') as f:
+            pdf_bytes = f.read()
             
+        # Limpa toda a sujeira (Original, Word temp e PDF temp)
         if os.path.exists(input_path): os.remove(input_path)
-        if os.path.exists(output_path): os.remove(output_path)
+        if temp_word_path and os.path.exists(temp_word_path): os.remove(temp_word_path)
+        if output_pdf_path and os.path.exists(output_pdf_path): os.remove(output_pdf_path)
         
-        return io.BytesIO(arquivo_bytes)
+        return io.BytesIO(pdf_bytes)
 
     except Exception as e:
-        st.error(f"Erro na API: {e}")
+        st.error(f"Erro no Salto Duplo: {e}")
         return None
 
 # --- 3. GOOGLE DRIVE ---
 def get_drive_service():
     try:
         if "gcp_service_account" in st.secrets:
-            creds = service_account.Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=['https://www.googleapis.com/auth/drive'])
+            creds = service_account.Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"], scopes=['https://www.googleapis.com/auth/drive'])
         elif "google_auth" in st.secrets:
             info = st.secrets["google_auth"]
-            creds = Credentials(None, refresh_token=info["refresh_token"], token_uri="https://oauth2.googleapis.com/token", client_id=info["client_id"], client_secret=info["client_secret"])
+            creds = Credentials(None, refresh_token=info["refresh_token"], 
+                              token_uri="https://oauth2.googleapis.com/token",
+                              client_id=info["client_id"], client_secret=info["client_secret"])
         else:
             return None
         return build('drive', 'v3', credentials=creds)
@@ -86,31 +112,35 @@ def upload_drive(service, file_obj, name, folder_id, mime):
         return False
 
 # --- 4. TELA ---
-st.title("📝 Teste Word (Editável)")
+st.title("🛡️ Scanner IRPF (Método Garantido)")
 
-# ⚠️⚠️⚠️ NÃO ESQUEÇA O ID DA PASTA AQUI EMBAIXO ⚠️⚠️⚠️
+# ⚠️⚠️⚠️ SEU ID DA PASTA AQUI ⚠️⚠️⚠️
 FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
 
 if configurar_apis():
     if "cpf_atual" not in st.session_state: st.session_state["cpf_atual"] = ""
 
     if not st.session_state["cpf_atual"]:
-        cpf = st.text_input("CPF do Cliente:")
-        if st.button("Entrar"): st.session_state["cpf_atual"] = cpf; st.rerun()
+        cpf = st.text_input("CPF do Cliente:", max_chars=14)
+        if st.button("Iniciar"): 
+            if len(cpf) > 5: st.session_state["cpf_atual"] = cpf; st.rerun()
     else:
-        st.info(f"Cliente: {st.session_state['cpf_atual']}")
+        st.success(f"Cliente: **{st.session_state['cpf_atual']}**")
+        if st.button("Trocar Cliente"): st.session_state["cpf_atual"] = ""; st.rerun()
         
-        files = st.file_uploader("Mande a foto pra testar:", accept_multiple_files=True)
+        st.info("ℹ️ Método Ativado: Foto -> Word -> PDF (Garante texto pesquisável).")
         
-        if files and st.button("Converter para Word"):
+        files = st.file_uploader("Documentos", accept_multiple_files=True)
+        
+        if files and st.button("Converter com Segurança Máxima"):
             service = get_drive_service()
             
-            # Verificação do ID
+            # Trava de ID
             if "COLOQUE" in FOLDER_ID_RAIZ:
-                st.error("⚠️ Você esqueceu de colocar o ID DA PASTA no código!")
+                st.error("🛑 Você esqueceu o ID da pasta na linha 118!")
                 st.stop()
 
-            # Pega pasta
+            # Pasta
             try:
                 q = f"name = '{st.session_state['cpf_atual']}' and '{FOLDER_ID_RAIZ}' in parents and trashed=false"
                 res = service.files().list(q=q).execute().get('files', [])
@@ -118,22 +148,26 @@ if configurar_apis():
                 else: folder_id = service.files().create(body={'name': st.session_state['cpf_atual'], 'parents': [FOLDER_ID_RAIZ], 'mimeType': 'application/vnd.google-apps.folder'}).execute()['id']
                 
                 bar = st.progress(0)
+                status = st.empty()
                 
                 for i, f in enumerate(files):
-                    st.write(f"Transformando {f.name} em Word...")
+                    status.text(f"Processando {f.name} (Pode demorar um pouco mais)...")
                     
-                    word_doc = converter_para_word(f)
+                    # Chama a função DUPLA
+                    pdf_final = converter_salto_duplo(f)
                     
-                    if word_doc:
-                        nome = f.name.rsplit('.', 1)[0] + ".docx"
-                        # Salva como Word
-                        upload_drive(service, word_doc, nome, folder_id, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+                    if pdf_final:
+                        nome = f.name.rsplit('.', 1)[0] + ".pdf"
+                        upload_drive(service, pdf_final, nome, folder_id, 'application/pdf')
                     else:
-                        st.warning("Falha na conversão.")
+                        st.warning(f"Falha em {f.name}. Enviando original.")
+                        upload_drive(service, f, f.name, folder_id, f.type)
                     
                     bar.progress((i+1)/len(files))
                 
-                st.success("✅ Verifique no Drive! Se abrir o Word e tiver texto, funcionou.")
+                status.text("Pronto!")
+                st.balloons()
+                st.success("✅ Documentos blindados salvos no Drive!")
                 
             except Exception as e:
                 st.error(f"Erro Geral: {e}")
