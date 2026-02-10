@@ -1,61 +1,57 @@
 import streamlit as st
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-# Configuração da página
 st.set_page_config(page_title="Upload IRPF", layout="centered")
 
-# --- AUTENTICAÇÃO ROBUSTA (SERVICE ACCOUNT) ---
-def autenticar_drive():
-    # Pega as credenciais direto dos Segredos do Streamlit
-    gcp_service_account = st.secrets["gcp_service_account"]
+# --- CONEXÃO SEGURA COM O GOOGLE DRIVE ---
+def get_drive_service():
+    # Pega as chaves que você salvou nos Secrets
+    info = st.secrets["google_auth"]
     
-    # Cria as credenciais a partir do dicionário
-    creds = service_account.Credentials.from_service_account_info(
-        gcp_service_account,
-        scopes=['https://www.googleapis.com/auth/drive']
+    # Recria a credencial usando o Refresh Token (Isso renova o acesso sozinho)
+    creds = Credentials(
+        None, 
+        refresh_token=info["refresh_token"],
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=info["client_id"],
+        client_secret=info["client_secret"]
     )
-    return creds
+    return build('drive', 'v3', credentials=creds)
 
 # --- FUNÇÃO DE UPLOAD ---
-def fazer_upload(arquivo, folder_id):
+def upload_file(file_obj):
     try:
-        creds = autenticar_drive()
-        service = build('drive', 'v3', credentials=creds)
-
+        service = get_drive_service()
+        folder_id = st.secrets["google_auth"]["folder_id"]
+        
         file_metadata = {
-            'name': arquivo.name,
-            'parents': [folder_id] # ID da pasta que você compartilhou com o robô
+            'name': file_obj.name,
+            'parents': [folder_id]
         }
         
-        media = MediaIoBaseUpload(arquivo, mimetype=arquivo.type, resumable=True)
-        
-        arquivo_drive = service.files().create(
+        # Faz o upload
+        media = MediaIoBaseUpload(file_obj, mimetype=file_obj.type, resumable=True)
+        service.files().create(
             body=file_metadata,
             media_body=media,
             fields='id'
         ).execute()
-        
         return True
     except Exception as e:
-        st.error(f"Erro no upload: {e}")
+        st.error(f"Erro no envio: {e}")
         return False
 
-# --- INTERFACE ---
-st.title("Envio de Documentos - IRPF")
-st.info("Arquivos serão organizados na pasta: **IRPF / Pablo Henrique**")
+# --- TELA DO CELULAR ---
+st.title("📂 Envio Rápido IRPF")
+st.info("Sistema conectado via Refresh Token")
 
-# ID DA PASTA NO DRIVE (Você pega isso na URL quando abre a pasta no navegador)
-# Exemplo: drive.google.com/drive/folders/1abcDEFgHiJkLmNoPqRsTuVwXyZ
-FOLDER_ID_DESTINO = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
+arquivo = st.file_uploader("Tirar foto ou escolher arquivo", type=['jpg', 'png', 'pdf'])
 
-uploaded_file = st.file_uploader("Selecione o documento (Foto ou PDF)", type=['png', 'jpg', 'jpeg', 'pdf'])
-
-if uploaded_file is not None:
-    if st.button("🚀 Iniciar Upload Seguro"):
-        with st.spinner("Enviando para a nuvem..."):
-            sucesso = fazer_upload(uploaded_file, FOLDER_ID_DESTINO)
-            if sucesso:
-                st.success("Arquivo enviado com sucesso!")
+if arquivo:
+    if st.button("Enviar Agora", use_container_width=True):
+        with st.spinner("Enviando..."):
+            if upload_file(arquivo):
+                st.success("✅ Arquivo salvo no Drive com sucesso!")
                 st.balloons()
