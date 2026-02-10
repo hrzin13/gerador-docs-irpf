@@ -120,7 +120,7 @@ st.title("📄 Scanner IRPF (OCR PT-BR)")
 apis_ok = configurar_apis()
 
 # SEU ID DA PASTA AQUI
-FOLDER_ID_RAIZ = "COLOQUE_SEU_ID_AQUI" 
+FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
 
 if apis_ok:
     if "cpf_atual" not in st.session_state: st.session_state["cpf_atual"] = ""
