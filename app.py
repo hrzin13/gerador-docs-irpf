@@ -4,10 +4,10 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-# Configuração da página para parecer app de celular
+# Configuração da página
 st.set_page_config(page_title="Upload IRPF", layout="centered")
 
-# --- 1. AUTENTICAÇÃO (Mantenha a que deu certo para você) ---
+# --- 1. AUTENTICAÇÃO ---
 def get_drive_service():
     # Tenta pegar Service Account (Robô)
     if "gcp_service_account" in st.secrets:
@@ -15,7 +15,7 @@ def get_drive_service():
         creds = service_account.Credentials.from_service_account_info(
             creds_dict, scopes=['https://www.googleapis.com/auth/drive']
         )
-    # Ou tenta pegar Refresh Token (OAuth)
+    # Ou tenta pegar Refresh Token (OAuth - O que deu certo pra você)
     elif "google_auth" in st.secrets:
         info = st.secrets["google_auth"]
         creds = Credentials(
@@ -31,18 +31,15 @@ def get_drive_service():
         
     return build('drive', 'v3', credentials=creds)
 
-# --- 2. GERENCIADOR DE PASTAS (A Mágica do CPF) ---
+# --- 2. GERENCIADOR DE PASTAS (CPF) ---
 def buscar_ou_criar_pasta_cpf(service, folder_pai_id, cpf):
-    # 1. Procura se já existe uma pasta com esse CPF
     query = f"name = '{cpf}' and '{folder_pai_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     response = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
     files = response.get('files', [])
 
     if files:
-        # Achou a pasta! Retorna o ID dela.
         return files[0]['id']
     else:
-        # Não achou. Vamos criar.
         file_metadata = {
             'name': cpf,
             'parents': [folder_pai_id],
@@ -52,75 +49,93 @@ def buscar_ou_criar_pasta_cpf(service, folder_pai_id, cpf):
         return folder.get('id')
 
 # --- 3. FUNÇÃO DE UPLOAD ---
-def fazer_upload(arquivo, folder_id_cpf):
+def fazer_upload(service, arquivo, folder_id_cpf):
     try:
-        service = get_drive_service()
-        
         file_metadata = {
             'name': arquivo.name,
-            'parents': [folder_id_cpf] # Salva dentro da pasta do CPF
+            'parents': [folder_id_cpf]
         }
-        
         media = MediaIoBaseUpload(arquivo, mimetype=arquivo.type, resumable=True)
-        
         service.files().create(
             body=file_metadata,
             media_body=media,
             fields='id'
         ).execute()
-        
         return True
     except Exception as e:
-        st.error(f"Erro no envio: {e}")
+        st.error(f"Erro no arquivo {arquivo.name}: {e}")
         return False
 
 # --- 4. INTERFACE DO USUÁRIO ---
-st.title("📂 Sistema IRPF")
+st.title("📂 Envio de Documentos IRPF")
 
-# ID DA PASTA RAIZ (A pasta "IRPF / Pablo Henrique")
-# Certifique-se que este ID está correto no seu código!
-FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
-# Se você já salvou nos secrets, pode usar: st.secrets["google_auth"]["folder_id"]
+# SEU ID DA PASTA PRINCIPAL AQUI
+FOLDER_ID_RAIZ = "COLOQUE_SEU_ID_AQUI_SE_NAO_ESTIVER_NOS_SECRETS"
+# Ou se estiver nos secrets: st.secrets["google_auth"]["folder_id"]
 
-# --- Fluxo de CPF ---
 if "cpf_atual" not in st.session_state:
     st.session_state["cpf_atual"] = ""
 
-# Se não tem CPF definido, mostra a tela de login
+# --- TELA 1: IDENTIFICAÇÃO ---
 if not st.session_state["cpf_atual"]:
-    st.info("Identifique o cliente para começar.")
-    cpf_input = st.text_input("Digite o CPF do Cliente:", max_chars=14, placeholder="000.000.000-00")
+    st.info("Digite seu CPF para começar o envio.")
+    cpf_input = st.text_input("CPF (somente números):", max_chars=14)
     
-    if st.button("Acessar Pasta do Cliente", use_container_width=True):
-        if len(cpf_input) > 5: # Validação simples
+    if st.button("Continuar", use_container_width=True):
+        if len(cpf_input) > 5:
             st.session_state["cpf_atual"] = cpf_input
-            st.rerun() # Recarrega a página
+            st.rerun()
         else:
-            st.warning("Digite um CPF válido.")
+            st.warning("Por favor, digite um CPF válido.")
 
-# Se já tem CPF, mostra a tela de upload
+# --- TELA 2: UPLOAD MÚLTIPLO ---
 else:
     st.markdown(f"### Cliente: **{st.session_state['cpf_atual']}**")
     
-    # Botão para trocar de cliente
-    if st.button("Trocar Cliente", type="secondary"):
+    if st.button("Sair / Trocar CPF", type="secondary"):
         st.session_state["cpf_atual"] = ""
         st.rerun()
 
     st.write("---")
-    uploaded_file = st.file_uploader("Selecione o documento", type=['jpg', 'png', 'pdf', 'jpeg'])
+    
+    # A MÁGICA ESTÁ AQUI: accept_multiple_files=True
+    uploaded_files = st.file_uploader(
+        "Selecione todos os documentos e fotos:", 
+        type=['jpg', 'png', 'pdf', 'jpeg'],
+        accept_multiple_files=True 
+    )
 
-    if uploaded_file:
-        if st.button("Enviar Documento 🚀", use_container_width=True):
-            with st.spinner(f"Criando/Buscando pasta para {st.session_state['cpf_atual']}..."):
+    if uploaded_files:
+        st.write(f"📁 **{len(uploaded_files)} arquivos selecionados.**")
+        
+        if st.button(f"Enviar {len(uploaded_files)} Arquivos 🚀", use_container_width=True):
+            
+            # Barra de progresso
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            service = get_drive_service()
+            
+            # Busca/Cria a pasta uma única vez antes do loop
+            status_text.text("Verificando pasta do cliente...")
+            folder_id_cpf = buscar_ou_criar_pasta_cpf(service, FOLDER_ID_RAIZ, st.session_state['cpf_atual'])
+            
+            sucessos = 0
+            
+            # Loop para enviar um por um
+            for i, arquivo in enumerate(uploaded_files):
+                status_text.text(f"Enviando: {arquivo.name}...")
                 
-                service = get_drive_service()
+                if fazer_upload(service, arquivo, folder_id_cpf):
+                    sucessos += 1
                 
-                # AQUI É O PULO DO GATO:
-                # Ele descobre qual é a pasta do CPF antes de enviar
-                folder_id_cpf = buscar_ou_criar_pasta_cpf(service, FOLDER_ID_RAIZ, st.session_state['cpf_atual'])
-                
-                # Faz o upload na pasta certa
-                if fazer_upload(uploaded_file, folder_id_cpf):
-                    st.success(f"Sucesso! Arquivo salvo na pasta do CPF {st.session_state['cpf_atual']}")
-                    st.balloons()
+                # Atualiza barra de progresso
+                percentual = (i + 1) / len(uploaded_files)
+                progress_bar.progress(percentual)
+            
+            status_text.text("Finalizado!")
+            st.success(f"✅ Sucesso! {sucessos} de {len(uploaded_files)} arquivos foram enviados.")
+            
+            # Limpa a lista para não enviar duplicado se clicar de novo
+            if st.button("Enviar mais arquivos"):
+                st.rerun()
