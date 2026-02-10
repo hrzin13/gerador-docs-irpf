@@ -3,13 +3,12 @@ import convertapi
 import os
 import tempfile
 import io
-from PIL import Image # Biblioteca de imagem do Python
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-st.set_page_config(page_title="Scanner Universal (Tudo vira PDF)", layout="centered")
+st.set_page_config(page_title="Scanner OCR Nuvem", layout="centered")
 
 # --- 1. CONFIGURAÇÃO ---
 def configurar_apis():
@@ -21,81 +20,53 @@ def configurar_apis():
     convertapi.api_credentials = chave 
     return True
 
-# --- 2. PASSO 1: PADRONIZAR (FOTO -> PDF MUDO) ---
-# Essa função roda NO SEU SERVIDOR (Não gasta crédito, não falha)
-def transformar_foto_em_pdf_local(arquivo_upload):
+# --- 2. CONVERSÃO DIRETA (MANDA ORIGINAL -> RECEBE PDF OCR) ---
+def converter_nuvem_direto(arquivo_upload):
     try:
-        image = Image.open(arquivo_upload)
-        
-        # Converte para RGB (Evita erro com PNG transparente)
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
+        nome = arquivo_upload.name
+        ext = os.path.splitext(nome)[1].lower() or ".jpg"
 
-        # Cria uma folha A4 Branca em memória
-        # A4 em 72 DPI = 595 x 842 pixels (Padrão PDF)
-        # Vamos fazer um pouco maior para garantir qualidade
-        a4_width, a4_height = 1240, 1754 
-        canvas = Image.new('RGB', (a4_width, a4_height), (255, 255, 255))
-        
-        # Redimensiona a imagem para caber na folha (mantendo proporção)
-        image.thumbnail((a4_width - 100, a4_height - 100), Image.Resampling.LANCZOS)
-        
-        # Centraliza
-        x = (a4_width - image.width) // 2
-        y = (a4_height - image.height) // 2
-        canvas.paste(image, (x, y))
-        
-        # Salva como PDF em memória
-        pdf_bytes = io.BytesIO()
-        canvas.save(pdf_bytes, format='PDF', resolution=150)
-        pdf_bytes.seek(0)
-        
-        return pdf_bytes
-
-    except Exception as e:
-        st.error(f"Erro ao criar PDF local: {e}")
-        return None
-
-# --- 3. PASSO 2: A MÁGICA (PDF MUDO -> PDF PESQUISÁVEL) ---
-# Agora mandamos pro site o arquivo que JÁ É PDF. Ele só faz o OCR.
-def aplicar_ocr_na_nuvem(arquivo_pdf_bytes, nome_original):
-    try:
-        # Salva o PDF mudo temporariamente
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as t_in:
-            t_in.write(arquivo_pdf_bytes.getvalue())
+        # Salva o arquivo original (sem mexer na qualidade)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as t_in:
+            t_in.write(arquivo_upload.getvalue())
             input_path = t_in.name
 
-        # Manda para a API
-        # Como já é PDF, o site usa o motor de OCR de PDF (que você disse que funciona!)
+        # PARÂMETROS DE ELITE
+        # Aqui a gente manda a API limpar a imagem e forçar a leitura
         parametros = {
             'File': input_path,
-            'Ocr': 'true',
-            'OcrLanguage': 'pt',     # Português
+            'Ocr': 'true',                # LER TEXTO
+            'OcrLanguage': 'pt',          # PORTUGUÊS
+            'PdfA': 'true',               # PDF ARQUIVÁVEL (Seguro)
             'PdfVersion': '1.7',
-            'StoreFile': 'true'      # Devolve o arquivo
+            'ImagePreprocessing': 'true', # LIMPAR IMAGEM (Tira fundo amarelo)
+            'RemoveNoise': 'true',        # TIRA SUJEIRA
+            'ScaleProportional': 'true',  # AJUSTA TAMANHO
+            'StoreFile': 'true'
         }
 
+        # Manda converter para PDF (Seja foto ou outro PDF)
         result = convertapi.convert('pdf', parametros)
         
-        # Baixa o PDF pronto
+        # Baixa o resultado
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as t_out:
             result.save_files(t_out.name)
             output_path = t_out.name
             
         with open(output_path, 'rb') as f:
-            final_bytes = f.read()
-
+            pdf_bytes = f.read()
+            
         # Limpa
         if os.path.exists(input_path): os.remove(input_path)
         if os.path.exists(output_path): os.remove(output_path)
-
-        return io.BytesIO(final_bytes)
+        
+        return io.BytesIO(pdf_bytes)
 
     except Exception as e:
         st.error(f"Erro na API: {e}")
         return None
 
-# --- 4. GOOGLE DRIVE ---
+# --- 3. GOOGLE DRIVE ---
 def get_drive_service():
     try:
         if "gcp_service_account" in st.secrets:
@@ -123,10 +94,10 @@ def upload_drive(service, file_obj, name, folder_id, mime):
         st.error(f"Erro Upload: {e}")
         return False
 
-# --- 5. TELA ---
-st.title("📲 Scanner Universal (JPG vira PDF)")
+# --- 4. TELA ---
+st.title("☁️ Scanner IRPF (Direto na Nuvem)")
 
-# ⚠️⚠️⚠️ SEU ID DA PASTA AQUI ⚠️⚠️⚠️
+# ⚠️⚠️⚠️ COLOQUE SEU ID DA PASTA AQUI ⚠️⚠️⚠️
 FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
 
 if configurar_apis():
@@ -140,19 +111,18 @@ if configurar_apis():
         st.success(f"Cliente: **{st.session_state['cpf_atual']}**")
         if st.button("Trocar Cliente"): st.session_state["cpf_atual"] = ""; st.rerun()
         
-        st.info("ℹ️ Estratégia: O sistema converte FOTO em PDF internamente, e depois manda para o OCR.")
+        st.info("ℹ️ Enviando original para máxima qualidade de leitura.")
         
-        files = st.file_uploader("Documentos (Fotos ou PDF)", accept_multiple_files=True)
+        files = st.file_uploader("Documentos (Fotos/PDF)", accept_multiple_files=True)
         
-        if files and st.button("Processar Documentos"):
+        if files and st.button("Processar"):
             service = get_drive_service()
             
-            # Trava de segurança
             if "COLOQUE" in FOLDER_ID_RAIZ:
-                st.error("🛑 ID da pasta não configurado na linha 140.")
+                st.error("🛑 Erro: ID da pasta não configurado na linha 95.")
                 st.stop()
 
-            # Busca Pasta
+            # Pega pasta
             try:
                 q = f"name = '{st.session_state['cpf_atual']}' and '{FOLDER_ID_RAIZ}' in parents and trashed=false"
                 res = service.files().list(q=q).execute().get('files', [])
@@ -163,38 +133,24 @@ if configurar_apis():
                 status = st.empty()
                 
                 for i, f in enumerate(files):
-                    status.text(f"Analisando: {f.name}...")
+                    status.text(f"Enviando para nuvem: {f.name}...")
                     
-                    arquivo_para_enviar = None
+                    # Manda pra API Direto
+                    pdf_pronto = converter_nuvem_direto(f)
                     
-                    # CASO 1: É UMA FOTO (JPG/PNG)?
-                    if f.type.startswith('image/'):
-                        status.text(f"Passo 1: Transformando foto {f.name} em PDF (Local)...")
-                        # Transforma em PDF aqui mesmo no Python
-                        arquivo_para_enviar = transformar_foto_em_pdf_local(f)
-                    
-                    # CASO 2: JÁ É PDF?
+                    if pdf_pronto:
+                        nome = f.name.rsplit('.', 1)[0] + ".pdf"
+                        upload_drive(service, pdf_pronto, nome, folder_id, 'application/pdf')
                     else:
-                        status.text(f"Passo 1: {f.name} já é PDF. Preparando...")
-                        arquivo_para_enviar = f
-                    
-                    # ENVIAR PARA API (OCR)
-                    if arquivo_para_enviar:
-                        status.text(f"Passo 2: Aplicando OCR na nuvem em {f.name}...")
-                        pdf_final = aplicar_ocr_na_nuvem(arquivo_para_enviar, f.name)
-                        
-                        if pdf_final:
-                            nome_final = f.name.rsplit('.', 1)[0] + ".pdf"
-                            upload_drive(service, pdf_final, nome_final, folder_id, 'application/pdf')
-                        else:
-                            st.warning(f"Falha no OCR de {f.name}. Salvando original.")
-                            upload_drive(service, f, f.name, folder_id, f.type)
+                        st.warning(f"Falha em {f.name}. Enviando original.")
+                        f.seek(0)
+                        upload_drive(service, f, f.name, folder_id, f.type)
                     
                     bar.progress((i+1)/len(files))
                 
-                status.text("Concluído!")
+                status.text("Pronto!")
                 st.balloons()
-                st.success("✅ Todos os arquivos agora são PDFs Pesquisáveis!")
+                st.success("✅ Arquivos processados com qualidade máxima!")
                 
             except Exception as e:
                 st.error(f"Erro Geral: {e}")
