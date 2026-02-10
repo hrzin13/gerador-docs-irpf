@@ -78,7 +78,7 @@ import io # Precisa importar isso aqui ou lá em cima
 
 st.title("🚀 Scanner IRPF Profissional")
 
-FOLDER_ID_RAIZ = "SEU_ID_DA_PASTA_AQUI" 
+FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
 
 if "cpf_atual" not in st.session_state: st.session_state["cpf_atual"] = ""
 
