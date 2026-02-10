@@ -3,6 +3,7 @@ import convertapi
 import os
 import tempfile
 import traceback
+import io # Garanta que o io está importado
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -10,16 +11,28 @@ from googleapiclient.http import MediaIoBaseUpload
 
 st.set_page_config(page_title="Scanner IRPF Pro", layout="centered")
 
-# --- 1. CONFIGURAÇÃO DE SEGURANÇA (Debug) ---
+# --- 1. CONFIGURAÇÃO BLINDADA ---
 def configurar_apis():
-    # Tenta carregar o segredo do ConvertAPI
-    if "convertapi" in st.secrets and "secret" in st.secrets["convertapi"]:
-        convertapi.api_secret = st.secrets["convertapi"]["secret"]
-        return True
-    else:
-        st.error("⚠️ ERRO CRÍTICO: Não achei a senha do ConvertAPI nos Secrets!")
-        st.info("Verifique se existe uma seção [convertapi] com a chave 'secret'.")
+    # Verifica se a seção existe
+    if "convertapi" not in st.secrets:
+        st.error("❌ ERRO NO SECRETS: Falta a seção [convertapi]")
         return False
+        
+    # Verifica se a chave 'secret' existe
+    if "secret" not in st.secrets["convertapi"]:
+        st.error("❌ ERRO NO SECRETS: Falta a chave 'secret' dentro de [convertapi]")
+        return False
+
+    # SEGREDO: Força a configuração nos dois lugares possíveis
+    chave = st.secrets["convertapi"]["secret"]
+    convertapi.api_secret = chave
+    convertapi.api_credentials = chave # <--- ESSA LINHA CONSERTA O SEU ERRO
+    
+    return True
+
+# O resto do código continua igual...
+# (def converter_via_api...)
+# (def get_drive_service...)
 
 # --- 2. FUNÇÃO DE CONVERSÃO (Blindada) ---
 def converter_via_api(arquivo_upload):
