@@ -2,19 +2,18 @@ import streamlit as st
 import convertapi
 import os
 import tempfile
-import traceback
 import io
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-st.set_page_config(page_title="Scanner IRPF Turbo", layout="centered")
+st.set_page_config(page_title="Prova Real (Word)", layout="centered")
 
-# --- 1. CONFIGURAÇÃO (Blindada) ---
+# --- 1. CONFIGURAÇÃO ---
 def configurar_apis():
-    if "convertapi" not in st.secrets or "secret" not in st.secrets["convertapi"]:
-        st.error("❌ ERRO: Falta o segredo do ConvertAPI nos Secrets.")
+    if "convertapi" not in st.secrets:
+        st.error("❌ Falta [convertapi] nos Secrets.")
         return False
     
     chave = st.secrets["convertapi"]["secret"]
@@ -22,60 +21,53 @@ def configurar_apis():
     convertapi.api_credentials = chave 
     return True
 
-# --- 2. FUNÇÃO TURBO (COM LIMPEZA DE IMAGEM) ---
-def converter_na_nuvem(arquivo_upload):
+# --- 2. CONVERSÃO PARA WORD (DOCX) ---
+def converter_para_word(arquivo_upload):
     try:
-        nome_arquivo = arquivo_upload.name
-        extensao = os.path.splitext(nome_arquivo)[1].lower() or ".jpg"
+        nome = arquivo_upload.name
+        ext = os.path.splitext(nome)[1].lower() or ".jpg"
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=extensao) as temp_input:
-            temp_input.write(arquivo_upload.getvalue())
-            input_path = temp_input.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as t_in:
+            t_in.write(arquivo_upload.getvalue())
+            input_path = t_in.name
 
-        # --- PARÂMETROS DE ELITE (Pre-processamento) ---
-        # Esses comandos limpam o cupom antes de ler
+        # MANDA CONVERTER PRA WORD (DOCX)
+        # Assim a gente VÊ se o texto foi lido mesmo
         parametros = {
             'File': input_path,
-            'Ocr': 'true',               # Ler texto
-            'OcrLanguage': 'pt',         # Português
-            'OcrMode': 'Force',          # Forçar leitura
-            'ImagePreprocessing': 'true',# Limpar imagem
-            'RemoveNoise': 'true',       # Tirar ruído (sujeira do papel)
-            'Deskew': 'true',            # Desentorta
-            'ScaleImage': 'true',        # Melhora resolução
+            'Ocr': 'true',
+            'OcrLanguage': 'pt',     # Português
+            'ImagePreprocessing': 'true', # Limpeza
             'StoreFile': 'true'
         }
 
-        # Manda converter (PDF ou Imagem -> PDF OCR)
-        result = convertapi.convert('pdf', parametros)
+        # Pede 'docx' em vez de 'pdf'
+        result = convertapi.convert('docx', parametros)
         
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_output:
-            result.save_files(temp_output.name)
-            output_path = temp_output.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as t_out:
+            result.save_files(t_out.name)
+            output_path = t_out.name
             
         with open(output_path, 'rb') as f:
-            pdf_bytes = f.read()
+            arquivo_bytes = f.read()
             
         if os.path.exists(input_path): os.remove(input_path)
         if os.path.exists(output_path): os.remove(output_path)
         
-        return io.BytesIO(pdf_bytes)
+        return io.BytesIO(arquivo_bytes)
 
     except Exception as e:
-        st.error(f"Erro na conversão: {e}")
+        st.error(f"Erro na API: {e}")
         return None
 
 # --- 3. GOOGLE DRIVE ---
 def get_drive_service():
     try:
         if "gcp_service_account" in st.secrets:
-            creds = service_account.Credentials.from_service_account_info(
-                st.secrets["gcp_service_account"], scopes=['https://www.googleapis.com/auth/drive'])
+            creds = service_account.Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=['https://www.googleapis.com/auth/drive'])
         elif "google_auth" in st.secrets:
             info = st.secrets["google_auth"]
-            creds = Credentials(None, refresh_token=info["refresh_token"], 
-                              token_uri="https://oauth2.googleapis.com/token",
-                              client_id=info["client_id"], client_secret=info["client_secret"])
+            creds = Credentials(None, refresh_token=info["refresh_token"], token_uri="https://oauth2.googleapis.com/token", client_id=info["client_id"], client_secret=info["client_secret"])
         else:
             return None
         return build('drive', 'v3', credentials=creds)
@@ -94,36 +86,31 @@ def upload_drive(service, file_obj, name, folder_id, mime):
         return False
 
 # --- 4. TELA ---
-st.title("📄 Scanner Turbo IRPF")
+st.title("📝 Teste Word (Editável)")
 
-# ⚠️⚠️⚠️ COLOQUE O CÓDIGO DA SUA PASTA AQUI EMBAIXO ⚠️⚠️⚠️
-FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
+# ⚠️⚠️⚠️ NÃO ESQUEÇA O ID DA PASTA AQUI EMBAIXO ⚠️⚠️⚠️
+FOLDER_ID_RAIZ = "COLOQUE_SEU_ID_AQUI" 
 
 if configurar_apis():
     if "cpf_atual" not in st.session_state: st.session_state["cpf_atual"] = ""
 
     if not st.session_state["cpf_atual"]:
-        cpf = st.text_input("CPF do Cliente:", max_chars=14)
-        if st.button("Iniciar"): 
-            if len(cpf) > 5: st.session_state["cpf_atual"] = cpf; st.rerun()
+        cpf = st.text_input("CPF do Cliente:")
+        if st.button("Entrar"): st.session_state["cpf_atual"] = cpf; st.rerun()
     else:
-        st.success(f"Cliente: **{st.session_state['cpf_atual']}**")
-        if st.button("Trocar Cliente"): st.session_state["cpf_atual"] = ""; st.rerun()
+        st.info(f"Cliente: {st.session_state['cpf_atual']}")
         
-        st.divider()
-        st.info("💡 Modo Turbo Ativado: Limpeza de imagem e Leitura em Português.")
+        files = st.file_uploader("Mande a foto pra testar:", accept_multiple_files=True)
         
-        files = st.file_uploader("Documentos", accept_multiple_files=True)
-        
-        if files and st.button("Processar e Enviar"):
+        if files and st.button("Converter para Word"):
             service = get_drive_service()
             
-            # Trava de segurança pra você não esquecer o ID
+            # Verificação do ID
             if "COLOQUE" in FOLDER_ID_RAIZ:
-                st.error("❌ PARE! Você esqueceu de colocar o ID da pasta no código (Linha 106).")
+                st.error("⚠️ Você esqueceu de colocar o ID DA PASTA no código!")
                 st.stop()
 
-            # Busca/Cria Pasta
+            # Pega pasta
             try:
                 q = f"name = '{st.session_state['cpf_atual']}' and '{FOLDER_ID_RAIZ}' in parents and trashed=false"
                 res = service.files().list(q=q).execute().get('files', [])
@@ -131,26 +118,22 @@ if configurar_apis():
                 else: folder_id = service.files().create(body={'name': st.session_state['cpf_atual'], 'parents': [FOLDER_ID_RAIZ], 'mimeType': 'application/vnd.google-apps.folder'}).execute()['id']
                 
                 bar = st.progress(0)
-                status = st.empty()
                 
                 for i, f in enumerate(files):
-                    status.text(f"Otimizando e Lendo: {f.name}...")
+                    st.write(f"Transformando {f.name} em Word...")
                     
-                    # Chama a função TURBO
-                    pdf_ocr = converter_na_nuvem(f)
+                    word_doc = converter_para_word(f)
                     
-                    if pdf_ocr:
-                        nome = f.name.rsplit('.', 1)[0] + ".pdf"
-                        upload_drive(service, pdf_ocr, nome, folder_id, 'application/pdf')
+                    if word_doc:
+                        nome = f.name.rsplit('.', 1)[0] + ".docx"
+                        # Salva como Word
+                        upload_drive(service, word_doc, nome, folder_id, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
                     else:
-                        st.warning(f"Falha ao ler {f.name}. Enviando original.")
-                        upload_drive(service, f, f.name, folder_id, f.type)
+                        st.warning("Falha na conversão.")
                     
                     bar.progress((i+1)/len(files))
                 
-                status.text("Pronto!")
-                st.balloons()
-                st.success("✅ Arquivos salvos com OCR Turbo!")
+                st.success("✅ Verifique no Drive! Se abrir o Word e tiver texto, funcionou.")
                 
             except Exception as e:
                 st.error(f"Erro Geral: {e}")
