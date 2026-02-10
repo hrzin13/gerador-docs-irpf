@@ -3,82 +3,89 @@ import convertapi
 import os
 import tempfile
 import traceback
-import io # Garanta que o io está importado
+import io
+from PIL import Image
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-st.set_page_config(page_title="Scanner IRPF Pro", layout="centered")
+st.set_page_config(page_title="Scanner IRPF Ultimate", layout="centered")
 
-# --- 1. CONFIGURAÇÃO BLINDADA ---
+# --- 1. CONFIGURAÇÃO (Blindada) ---
 def configurar_apis():
-    # Verifica se a seção existe
-    if "convertapi" not in st.secrets:
-        st.error("❌ ERRO NO SECRETS: Falta a seção [convertapi]")
+    # 1. Checa ConvertAPI
+    if "convertapi" not in st.secrets or "secret" not in st.secrets["convertapi"]:
+        st.error("❌ Erro nos Secrets: Falta [convertapi] ou a chave 'secret'.")
         return False
-        
-    # Verifica se a chave 'secret' existe
-    if "secret" not in st.secrets["convertapi"]:
-        st.error("❌ ERRO NO SECRETS: Falta a chave 'secret' dentro de [convertapi]")
-        return False
-
-    # SEGREDO: Força a configuração nos dois lugares possíveis
+    
+    # Configura a senha (Força bruta para garantir)
     chave = st.secrets["convertapi"]["secret"]
     convertapi.api_secret = chave
-    convertapi.api_credentials = chave # <--- ESSA LINHA CONSERTA O SEU ERRO
-    
+    convertapi.api_credentials = chave 
     return True
 
-# O resto do código continua igual...
-# (def converter_via_api...)
-# (def get_drive_service...)
-
-# --- 2. FUNÇÃO DE CONVERSÃO (Blindada) ---
-def converter_via_api(arquivo_upload):
+# --- 2. PASSO A PASSO: FOTO -> PDF A4 -> PDF OCR ---
+def processar_documento_completo(arquivo_upload):
     if not convertapi.api_secret:
-        st.error("Conversão cancelada: Falta a senha da API.")
+        st.error("Sem senha da API.")
         return None
 
+    temp_filenames = [] # Lista para apagar arquivos depois
     try:
-        # Define a extensão (se não tiver, assume .jpg)
-        ext = os.path.splitext(arquivo_upload.name)[1]
-        if not ext: ext = ".jpg"
+        # --- ETAPA 1: CONVERSÃO LOCAL (FOTO -> PDF A4) ---
+        # Isso garante que a dimensão fique perfeita (A4) sem gastar crédito
+        img = Image.open(arquivo_upload)
+        if img.mode != 'RGB': img = img.convert('RGB')
+        
+        # Cria folha A4 Branca (300 DPI)
+        a4_w, a4_h = 2480, 3508
+        canvas = Image.new('RGB', (a4_w, a4_h), (255, 255, 255))
+        
+        # Redimensiona imagem para caber na folha
+        img.thumbnail((a4_w - 200, a4_h - 200), Image.Resampling.LANCZOS)
+        
+        # Centraliza
+        x = (a4_w - img.width) // 2
+        y = (a4_h - img.height) // 2
+        canvas.paste(img, (x, y))
+        
+        # Salva esse PDF "mudo" (sem texto) temporariamente
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_local:
+            canvas.save(tmp_local.name, "PDF", resolution=300)
+            pdf_local_path = tmp_local.name
+            temp_filenames.append(pdf_local_path)
 
-        # Salva o arquivo temporário
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_input:
-            temp_input.write(arquivo_upload.getvalue())
-            input_path = temp_input.name
-
-        # Manda para o ConvertAPI
-        # Parâmetros ajustados para evitar erros de tipo
+        # --- ETAPA 2: NUVEM (PDF MUDO -> PDF FALANTE/OCR) ---
+        # Agora mandamos o PDF pronto pro ConvertAPI só colocar o texto
+        
         result = convertapi.convert('pdf', {
-            'File': input_path,
-            'StoreFile': 'true',
-            'Ocr': 'true',
-            'ScaleProportional': 'true',
-            'PageSize': 'a4'
+            'File': pdf_local_path,
+            'Ocr': 'true',            # Liga o leitor
+            'OcrLanguage': 'pt',      # <--- O SEGREDO! (Português)
+            'OcrMode': 'always',      # Obriga a ler tudo
+            'StoreFile': 'true'
         })
         
-        # Baixa o resultado
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_output:
-            result.save_files(temp_output.name)
-            output_path = temp_output.name
+        # Baixa o PDF final
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_final:
+            result.save_files(tmp_final.name)
+            pdf_final_path = tmp_final.name
+            temp_filenames.append(pdf_final_path)
             
-        with open(output_path, 'rb') as f:
+        with open(pdf_final_path, 'rb') as f:
             pdf_bytes = f.read()
             
-        # Limpeza
-        if os.path.exists(input_path): os.remove(input_path)
-        if os.path.exists(output_path): os.remove(output_path)
-        
         return io.BytesIO(pdf_bytes)
 
     except Exception as e:
-        # Mostra o erro real para a gente entender
-        st.error(f"Erro detalhado na API: {e}")
-        st.code(traceback.format_exc()) # Mostra o rastro do erro
+        st.error(f"Erro no processamento: {e}")
+        st.write(traceback.format_exc())
         return None
+    finally:
+        # Limpa a sujeira do disco
+        for f in temp_filenames:
+            if os.path.exists(f): os.remove(f)
 
 # --- 3. GOOGLE DRIVE ---
 def get_drive_service():
@@ -95,7 +102,7 @@ def get_drive_service():
             return None
         return build('drive', 'v3', credentials=creds)
     except Exception as e:
-        st.error(f"Erro ao conectar no Google: {e}")
+        st.error(f"Erro Google: {e}")
         return None
 
 def upload_drive(service, file_obj, name, folder_id, mime):
@@ -105,73 +112,64 @@ def upload_drive(service, file_obj, name, folder_id, mime):
         service.files().create(body=meta, media_body=media, fields='id').execute()
         return True
     except Exception as e:
-        st.error(f"Falha no upload pro Drive: {e}")
+        st.error(f"Erro Upload: {e}")
         return False
 
-# --- 4. TELA PRINCIPAL ---
-import io
-
-st.title("🚀 Scanner Pro IRPF")
-
-# Verifica se as chaves estão ok antes de começar
+# --- 4. TELA ---
+st.title("📄 Scanner IRPF (OCR PT-BR)")
 apis_ok = configurar_apis()
 
 # SEU ID DA PASTA AQUI
-FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
+FOLDER_ID_RAIZ = "COLOQUE_SEU_ID_AQUI" 
 
 if apis_ok:
     if "cpf_atual" not in st.session_state: st.session_state["cpf_atual"] = ""
 
     if not st.session_state["cpf_atual"]:
-        st.info("👋 Bem-vindo! Identifique o cliente.")
         cpf = st.text_input("CPF do Cliente:", max_chars=14)
-        if st.button("Iniciar Atendimento", use_container_width=True): 
+        if st.button("Iniciar"): 
             if len(cpf) > 5: st.session_state["cpf_atual"] = cpf; st.rerun()
     else:
-        st.success(f"📂 Cliente Ativo: **{st.session_state['cpf_atual']}**")
-        if st.button("Trocar Cliente", type="secondary"): st.session_state["cpf_atual"] = ""; st.rerun()
+        st.info(f"Cliente: **{st.session_state['cpf_atual']}**")
+        if st.button("Trocar"): st.session_state["cpf_atual"] = ""; st.rerun()
         
-        st.divider()
-        st.write("Selecione fotos da galeria ou documentos:")
-        files = st.file_uploader("Arquivos", accept_multiple_files=True, label_visibility="collapsed")
+        files = st.file_uploader("Documentos", accept_multiple_files=True)
         
-        if files and st.button(f"Processar {len(files)} Arquivos 🚀", use_container_width=True):
+        if files and st.button("Processar"):
             service = get_drive_service()
             
-            if not service:
-                st.error("Não consegui conectar no Google Drive.")
-            else:
-                # Busca pasta do CPF
-                try:
-                    q = f"name = '{st.session_state['cpf_atual']}' and '{FOLDER_ID_RAIZ}' in parents and trashed=false"
-                    res = service.files().list(q=q).execute().get('files', [])
-                    if res: folder_id = res[0]['id']
-                    else: folder_id = service.files().create(body={'name': st.session_state['cpf_atual'], 'parents': [FOLDER_ID_RAIZ], 'mimeType': 'application/vnd.google-apps.folder'}).execute()['id']
+            # Busca/Cria Pasta
+            try:
+                q = f"name = '{st.session_state['cpf_atual']}' and '{FOLDER_ID_RAIZ}' in parents and trashed=false"
+                res = service.files().list(q=q).execute().get('files', [])
+                if res: folder_id = res[0]['id']
+                else: folder_id = service.files().create(body={'name': st.session_state['cpf_atual'], 'parents': [FOLDER_ID_RAIZ], 'mimeType': 'application/vnd.google-apps.folder'}).execute()['id']
+                
+                bar = st.progress(0)
+                status = st.empty()
+                
+                for i, f in enumerate(files):
+                    status.text(f"Convertendo {f.name}...")
                     
-                    bar = st.progress(0)
-                    status = st.empty()
-                    
-                    for i, f in enumerate(files):
-                        status.text(f"Processando {i+1}/{len(files)}: {f.name}...")
-                        
-                        # Se for imagem -> API PRO
-                        if f.type.startswith('image/'):
-                            pdf_pro = converter_via_api(f)
-                            if pdf_pro:
-                                nome = f.name.rsplit('.', 1)[0] + ".pdf"
-                                upload_drive(service, pdf_pro, nome, folder_id, 'application/pdf')
-                            else:
-                                st.warning(f"⚠️ {f.name} foi enviado sem conversão (falha na API).")
-                                upload_drive(service, f, f.name, folder_id, f.type)
+                    # Se for imagem -> Faz o Processo Completo (Local + Nuvem)
+                    if f.type.startswith('image/'):
+                        pdf_ocr = processar_documento_completo(f)
+                        if pdf_ocr:
+                            nome = f.name.rsplit('.', 1)[0] + ".pdf"
+                            upload_drive(service, pdf_ocr, nome, folder_id, 'application/pdf')
                         else:
-                            # PDF ou outros -> Direto
+                            st.warning(f"Falha na conversão de {f.name}. Enviando original.")
                             upload_drive(service, f, f.name, folder_id, f.type)
-                        
-                        bar.progress((i+1)/len(files))
                     
-                    status.text("Finalizado!")
-                    st.balloons()
-                    st.success("✅ Todos os arquivos foram salvos na pasta do cliente!")
+                    # Se já for PDF -> Manda direto (ou poderia mandar pro OCR também se quisesse)
+                    else:
+                        upload_drive(service, f, f.name, folder_id, f.type)
                     
-                except Exception as e:
-                    st.error(f"Erro geral: {e}")
+                    bar.progress((i+1)/len(files))
+                
+                status.text("Sucesso!")
+                st.balloons()
+                st.success("Arquivos processados e salvos!")
+                
+            except Exception as e:
+                st.error(f"Erro Geral: {e}")
