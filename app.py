@@ -9,51 +9,46 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-st.set_page_config(page_title="Scanner IRPF Pro", layout="centered")
+st.set_page_config(page_title="Scanner OCR IRPF", layout="centered")
 
-# --- 1. CONFIGURAÇÃO (Blindada) ---
+# --- 1. CONFIGURAÇÃO ---
 def configurar_apis():
-    # Verifica Secrets
     if "convertapi" not in st.secrets or "secret" not in st.secrets["convertapi"]:
-        st.error("❌ Falta o segredo do ConvertAPI.")
+        st.error("❌ ERRO: Falta o segredo do ConvertAPI nos Secrets.")
         return False
     
-    # Configura Senha
     chave = st.secrets["convertapi"]["secret"]
     convertapi.api_secret = chave
     convertapi.api_credentials = chave 
     return True
 
-# --- 2. FUNÇÃO MÁGICA: MANDA DIRETO PRA NUVEM ---
-def converter_na_nuvem(arquivo_upload):
+# --- 2. A MÁGICA (OCR EM PORTUGUÊS) ---
+def converter_para_pdf_pesquisavel(arquivo_upload):
     try:
-        # Define a extensão do arquivo (jpg, png, pdf)
         nome_arquivo = arquivo_upload.name
         extensao = os.path.splitext(nome_arquivo)[1].lower()
         if not extensao: extensao = ".jpg"
 
-        # Salva o arquivo original temporariamente
+        # 1. Salva o arquivo original temporariamente
         with tempfile.NamedTemporaryFile(delete=False, suffix=extensao) as temp_input:
             temp_input.write(arquivo_upload.getvalue())
             input_path = temp_input.name
 
-        # --- AQUI É O PULO DO GATO ---
-        # Mandamos direto pro ConvertAPI com os parâmetros de OCR ligados
-        # Eles se viram pra deixar A4 e Ler o texto
-        
+        # 2. Configura o Robô para ler em PORTUGUÊS
         parametros = {
             'File': input_path,
-            'Ocr': 'true',            # Liga o leitor de texto
-            'OcrLanguage': 'pt',      # Força Português (BR)
-            'PageSize': 'a4',         # Força sair em tamanho A4
-            'ScaleProportional': 'true', # Ajusta a imagem pra caber na folha
-            'StoreFile': 'true'
+            'Ocr': 'true',            # LIGA o leitor
+            'OcrLanguage': 'pt',      # <--- O SEGREDO (Português)
+            'StoreFile': 'true',
+            'ScaleProportional': 'true',
+            'PageSize': 'a4'          # Força o tamanho A4
         }
 
-        # Faz a conversão (Seja imagem ou PDF, a saída é sempre PDF OCR)
+        # 3. Manda converter
+        # Se o arquivo já for PDF, ele extrai o texto. Se for imagem, ele cria o PDF.
         result = convertapi.convert('pdf', parametros)
         
-        # Baixa o resultado
+        # 4. Baixa o resultado
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_output:
             result.save_files(temp_output.name)
             output_path = temp_output.name
@@ -61,14 +56,14 @@ def converter_na_nuvem(arquivo_upload):
         with open(output_path, 'rb') as f:
             pdf_bytes = f.read()
             
-        # Limpeza
+        # Limpa a sujeira
         if os.path.exists(input_path): os.remove(input_path)
         if os.path.exists(output_path): os.remove(output_path)
         
         return io.BytesIO(pdf_bytes)
 
     except Exception as e:
-        st.error(f"Erro na API: {e}")
+        st.error(f"Erro na conversão: {e}")
         return None
 
 # --- 3. GOOGLE DRIVE ---
@@ -100,13 +95,11 @@ def upload_drive(service, file_obj, name, folder_id, mime):
         return False
 
 # --- 4. TELA ---
-st.title("📄 Scanner IRPF (Direto na Nuvem)")
-apis_ok = configurar_apis()
+st.title("📄 Digitalizador OCR (Português)")
 
-# SEU ID DA PASTA AQUI
-FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
+FOLDER_ID_RAIZ = "COLOQUE_SEU_ID_AQUI" 
 
-if apis_ok:
+if configurar_apis():
     if "cpf_atual" not in st.session_state: st.session_state["cpf_atual"] = ""
 
     if not st.session_state["cpf_atual"]:
@@ -114,12 +107,15 @@ if apis_ok:
         if st.button("Iniciar"): 
             if len(cpf) > 5: st.session_state["cpf_atual"] = cpf; st.rerun()
     else:
-        st.info(f"Cliente: **{st.session_state['cpf_atual']}**")
-        if st.button("Trocar"): st.session_state["cpf_atual"] = ""; st.rerun()
+        st.success(f"Cliente: **{st.session_state['cpf_atual']}**")
+        if st.button("Trocar Cliente"): st.session_state["cpf_atual"] = ""; st.rerun()
+        
+        st.divider()
+        st.info("💡 Dica: O sistema vai ler o texto das imagens em Português.")
         
         files = st.file_uploader("Documentos", accept_multiple_files=True)
         
-        if files and st.button("Digitalizar e Enviar"):
+        if files and st.button("Processar e Enviar"):
             service = get_drive_service()
             
             # Busca/Cria Pasta
@@ -133,23 +129,23 @@ if apis_ok:
                 status = st.empty()
                 
                 for i, f in enumerate(files):
-                    status.text(f"Enviando pra API: {f.name}...")
+                    status.text(f"Lendo texto de: {f.name}...")
                     
-                    # Manda TUDO pra API (Imagem ou PDF)
-                    pdf_ocr = converter_na_nuvem(f)
+                    # Envia para a API fazer o OCR em PT-BR
+                    pdf_ocr = converter_para_pdf_pesquisavel(f)
                     
                     if pdf_ocr:
                         nome = f.name.rsplit('.', 1)[0] + ".pdf"
                         upload_drive(service, pdf_ocr, nome, folder_id, 'application/pdf')
                     else:
-                        st.warning(f"Falha na API com {f.name}. Enviando original.")
+                        st.warning(f"Falha ao ler {f.name}. Enviando original.")
                         upload_drive(service, f, f.name, folder_id, f.type)
                     
                     bar.progress((i+1)/len(files))
                 
-                status.text("Sucesso!")
+                status.text("Pronto!")
                 st.balloons()
-                st.success("Arquivos processados e salvos!")
+                st.success("Arquivos salvos e pesquisáveis!")
                 
             except Exception as e:
                 st.error(f"Erro Geral: {e}")
