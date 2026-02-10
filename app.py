@@ -35,37 +35,35 @@ def get_drive_service():
 # --- 2. FUNÇÃO MÁGICA: FOTO -> PDF PESQUISÁVEL (CORRIGIDA) ---
 def converter_imagem_para_pdf_ocr(image_file):
     try:
-        # Cria um arquivo temporário para a imagem
+        # Cria arquivo temporário
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_img:
             tmp_img.write(image_file.getvalue())
             tmp_img_path = tmp_img.name
         
         output_pdf_path = tmp_img_path.replace(".jpg", ".pdf")
         
-        # Roda o OCR (Transforma em PDF pesquisável)
-        # CORREÇÃO AQUI: Adicionei 'image_dpi=300' para aceitar prints de tela
+        # O CÓDIGO TURBINADO
         ocrmypdf.ocr(
             tmp_img_path, 
             output_pdf_path, 
-            language='por', 
-            deskew=True, 
-            force_ocr=True, 
-            image_dpi=300 
+            language='por',      # Força Português
+            deskew=True,         # Desentorta a folha se a foto ficou torta
+            force_ocr=True,      # Obriga a ler mesmo que ache que é imagem
+            image_dpi=300,       # Resolve o problema do Print de Celular
+            optimize=1           # Melhora o arquivo final
         )
         
-        # Lê o PDF gerado de volta para a memória
         with open(output_pdf_path, "rb") as f:
             pdf_bytes = f.read()
             
-        # Limpa a sujeira
         os.remove(tmp_img_path)
         os.remove(output_pdf_path)
         
         return io.BytesIO(pdf_bytes)
         
     except Exception as e:
-        # Se der erro, mostra no log mas não para o app
-        print(f"Erro OCR: {e}") 
+        print(f"Erro OCR: {e}")
+        # Se der erro, retorna None e o código principal envia a imagem original
         return None
 
 # --- 3. GERENCIADOR DE PASTAS (CPF) ---
