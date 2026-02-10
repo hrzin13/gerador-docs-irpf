@@ -9,9 +9,9 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-st.set_page_config(page_title="Scanner OCR IRPF", layout="centered")
+st.set_page_config(page_title="Scanner IRPF Turbo", layout="centered")
 
-# --- 1. CONFIGURAÇÃO ---
+# --- 1. CONFIGURAÇÃO (Blindada) ---
 def configurar_apis():
     if "convertapi" not in st.secrets or "secret" not in st.secrets["convertapi"]:
         st.error("❌ ERRO: Falta o segredo do ConvertAPI nos Secrets.")
@@ -22,35 +22,33 @@ def configurar_apis():
     convertapi.api_credentials = chave 
     return True
 
-# --- VERSÃO TURBO: LIMPA A IMAGEM ANTES DE LER ---
+# --- 2. FUNÇÃO TURBO (COM LIMPEZA DE IMAGEM) ---
 def converter_na_nuvem(arquivo_upload):
     try:
         nome_arquivo = arquivo_upload.name
         extensao = os.path.splitext(nome_arquivo)[1].lower() or ".jpg"
 
-        # Salva temporário
         with tempfile.NamedTemporaryFile(delete=False, suffix=extensao) as temp_input:
             temp_input.write(arquivo_upload.getvalue())
             input_path = temp_input.name
 
-        # --- PARÂMETROS DE ELITE ---
-        # Aqui a gente obriga o robô a tratar a imagem
+        # --- PARÂMETROS DE ELITE (Pre-processamento) ---
+        # Esses comandos limpam o cupom antes de ler
         parametros = {
             'File': input_path,
-            'Ocr': 'true',               # Ligar Leitura
+            'Ocr': 'true',               # Ler texto
             'OcrLanguage': 'pt',         # Português
-            'OcrMode': 'Force',          # <--- OBRIGA a ler mesmo se estiver ruim
-            'ImagePreprocessing': 'true',# <--- LIMPA a imagem antes (essencial pra cupom)
-            'RemoveNoise': 'true',       # Tira sujeira do papel
+            'OcrMode': 'Force',          # Forçar leitura
+            'ImagePreprocessing': 'true',# Limpar imagem
+            'RemoveNoise': 'true',       # Tirar ruído (sujeira do papel)
             'Deskew': 'true',            # Desentorta
-            'ScaleImage': 'true',        # Melhora a resolução
+            'ScaleImage': 'true',        # Melhora resolução
             'StoreFile': 'true'
         }
 
-        # Envia pra API
+        # Manda converter (PDF ou Imagem -> PDF OCR)
         result = convertapi.convert('pdf', parametros)
         
-        # Baixa o PDF
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_output:
             result.save_files(temp_output.name)
             output_path = temp_output.name
@@ -58,17 +56,32 @@ def converter_na_nuvem(arquivo_upload):
         with open(output_path, 'rb') as f:
             pdf_bytes = f.read()
             
-        # Limpa sujeira
         if os.path.exists(input_path): os.remove(input_path)
         if os.path.exists(output_path): os.remove(output_path)
         
         return io.BytesIO(pdf_bytes)
 
     except Exception as e:
-        # Se der erro, mostra no Streamlit pra gente saber
         st.error(f"Erro na conversão: {e}")
         return None
 
+# --- 3. GOOGLE DRIVE ---
+def get_drive_service():
+    try:
+        if "gcp_service_account" in st.secrets:
+            creds = service_account.Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"], scopes=['https://www.googleapis.com/auth/drive'])
+        elif "google_auth" in st.secrets:
+            info = st.secrets["google_auth"]
+            creds = Credentials(None, refresh_token=info["refresh_token"], 
+                              token_uri="https://oauth2.googleapis.com/token",
+                              client_id=info["client_id"], client_secret=info["client_secret"])
+        else:
+            return None
+        return build('drive', 'v3', credentials=creds)
+    except Exception as e:
+        st.error(f"Erro Google: {e}")
+        return None
 
 def upload_drive(service, file_obj, name, folder_id, mime):
     try:
@@ -81,9 +94,10 @@ def upload_drive(service, file_obj, name, folder_id, mime):
         return False
 
 # --- 4. TELA ---
-st.title("📄 Digitalizador OCR (Português)")
+st.title("📄 Scanner Turbo IRPF")
 
-FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
+# ⚠️⚠️⚠️ COLOQUE O CÓDIGO DA SUA PASTA AQUI EMBAIXO ⚠️⚠️⚠️
+FOLDER_ID_RAIZ = "COLOQUE_SEU_ID_AQUI" 
 
 if configurar_apis():
     if "cpf_atual" not in st.session_state: st.session_state["cpf_atual"] = ""
@@ -97,13 +111,18 @@ if configurar_apis():
         if st.button("Trocar Cliente"): st.session_state["cpf_atual"] = ""; st.rerun()
         
         st.divider()
-        st.info("💡 Dica: O sistema vai ler o texto das imagens em Português.")
+        st.info("💡 Modo Turbo Ativado: Limpeza de imagem e Leitura em Português.")
         
         files = st.file_uploader("Documentos", accept_multiple_files=True)
         
         if files and st.button("Processar e Enviar"):
             service = get_drive_service()
             
+            # Trava de segurança pra você não esquecer o ID
+            if "COLOQUE" in FOLDER_ID_RAIZ:
+                st.error("❌ PARE! Você esqueceu de colocar o ID da pasta no código (Linha 106).")
+                st.stop()
+
             # Busca/Cria Pasta
             try:
                 q = f"name = '{st.session_state['cpf_atual']}' and '{FOLDER_ID_RAIZ}' in parents and trashed=false"
@@ -115,10 +134,10 @@ if configurar_apis():
                 status = st.empty()
                 
                 for i, f in enumerate(files):
-                    status.text(f"Lendo texto de: {f.name}...")
+                    status.text(f"Otimizando e Lendo: {f.name}...")
                     
-                    # Envia para a API fazer o OCR em PT-BR
-                    pdf_ocr = converter_para_pdf_pesquisavel(f)
+                    # Chama a função TURBO
+                    pdf_ocr = converter_na_nuvem(f)
                     
                     if pdf_ocr:
                         nome = f.name.rsplit('.', 1)[0] + ".pdf"
@@ -131,7 +150,7 @@ if configurar_apis():
                 
                 status.text("Pronto!")
                 st.balloons()
-                st.success("Arquivos salvos e pesquisáveis!")
+                st.success("✅ Arquivos salvos com OCR Turbo!")
                 
             except Exception as e:
                 st.error(f"Erro Geral: {e}")
