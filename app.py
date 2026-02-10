@@ -8,7 +8,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-st.set_page_config(page_title="Scanner OCR Nuvem", layout="centered")
+st.set_page_config(page_title="Scanner Direto (Raw)", layout="centered")
 
 # --- 1. CONFIGURAÇÃO ---
 def configurar_apis():
@@ -20,32 +20,27 @@ def configurar_apis():
     convertapi.api_credentials = chave 
     return True
 
-# --- 2. CONVERSÃO DIRETA (MANDA ORIGINAL -> RECEBE PDF OCR) ---
-def converter_nuvem_direto(arquivo_upload):
+# --- 2. CONVERSÃO PURA (SEM MEXER NO ARQUIVO) ---
+def converter_sem_filtro(arquivo_upload):
     try:
         nome = arquivo_upload.name
-        ext = os.path.splitext(nome)[1].lower() or ".jpg"
+        ext = os.path.splitext(nome)[1].lower()
+        if not ext: ext = ".jpg"
 
-        # Salva o arquivo original (sem mexer na qualidade)
+        # Salva o arquivo EXATAMENTE como veio
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as t_in:
             t_in.write(arquivo_upload.getvalue())
             input_path = t_in.name
 
-        # PARÂMETROS DE ELITE
-        # Aqui a gente manda a API limpar a imagem e forçar a leitura
+        # Manda pra API sem filtros, apenas pedindo OCR
         parametros = {
             'File': input_path,
-            'Ocr': 'true',                # LER TEXTO
-            'OcrLanguage': 'pt',          # PORTUGUÊS
-            'PdfA': 'true',               # PDF ARQUIVÁVEL (Seguro)
-            'PdfVersion': '1.7',
-            'ImagePreprocessing': 'true', # LIMPAR IMAGEM (Tira fundo amarelo)
-            'RemoveNoise': 'true',        # TIRA SUJEIRA
-            'ScaleProportional': 'true',  # AJUSTA TAMANHO
-            'StoreFile': 'true'
+            'Ocr': 'true',         # LER TEXTO
+            'OcrLanguage': 'pt',   # PORTUGUÊS
+            'StoreFile': 'true'    # Devolve o arquivo
         }
 
-        # Manda converter para PDF (Seja foto ou outro PDF)
+        # Se for imagem ou PDF, a saída é sempre PDF
         result = convertapi.convert('pdf', parametros)
         
         # Baixa o resultado
@@ -95,9 +90,9 @@ def upload_drive(service, file_obj, name, folder_id, mime):
         return False
 
 # --- 4. TELA ---
-st.title("☁️ Scanner IRPF (Direto na Nuvem)")
+st.title("⚡ Scanner IRPF (Modo Direto)")
 
-# ⚠️⚠️⚠️ COLOQUE SEU ID DA PASTA AQUI ⚠️⚠️⚠️
+# ⚠️⚠️⚠️ SEU ID DA PASTA AQUI ⚠️⚠️⚠️
 FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
 
 if configurar_apis():
@@ -111,15 +106,15 @@ if configurar_apis():
         st.success(f"Cliente: **{st.session_state['cpf_atual']}**")
         if st.button("Trocar Cliente"): st.session_state["cpf_atual"] = ""; st.rerun()
         
-        st.info("ℹ️ Enviando original para máxima qualidade de leitura.")
+        st.info("ℹ️ Enviando arquivo puro para o motor de OCR.")
         
-        files = st.file_uploader("Documentos (Fotos/PDF)", accept_multiple_files=True)
+        files = st.file_uploader("Documentos (Print/Foto/PDF)", accept_multiple_files=True)
         
         if files and st.button("Processar"):
             service = get_drive_service()
             
             if "COLOQUE" in FOLDER_ID_RAIZ:
-                st.error("🛑 Erro: ID da pasta não configurado na linha 95.")
+                st.error("🛑 Faltou o ID da pasta na linha 95!")
                 st.stop()
 
             # Pega pasta
@@ -133,10 +128,9 @@ if configurar_apis():
                 status = st.empty()
                 
                 for i, f in enumerate(files):
-                    status.text(f"Enviando para nuvem: {f.name}...")
+                    status.text(f"Enviando {f.name}...")
                     
-                    # Manda pra API Direto
-                    pdf_pronto = converter_nuvem_direto(f)
+                    pdf_pronto = converter_sem_filtro(f)
                     
                     if pdf_pronto:
                         nome = f.name.rsplit('.', 1)[0] + ".pdf"
@@ -150,7 +144,7 @@ if configurar_apis():
                 
                 status.text("Pronto!")
                 st.balloons()
-                st.success("✅ Arquivos processados com qualidade máxima!")
+                st.success("✅ Arquivos enviados!")
                 
             except Exception as e:
                 st.error(f"Erro Geral: {e}")
