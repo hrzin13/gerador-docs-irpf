@@ -5,3 +5,6 @@ google-auth-oauthlib
 google-cloud-documentai 
 pandas 
 openpyxl
+ocrmypdf
+pdf2image
+
