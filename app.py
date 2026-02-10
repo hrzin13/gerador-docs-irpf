@@ -2,15 +2,14 @@ import streamlit as st
 import convertapi
 import os
 import tempfile
-import traceback
 import io
-import time
+from PIL import Image # Biblioteca de imagem do Python
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-st.set_page_config(page_title="Scanner Sequencial (Word -> PDF)", layout="centered")
+st.set_page_config(page_title="Scanner Universal (Tudo vira PDF)", layout="centered")
 
 # --- 1. CONFIGURAÇÃO ---
 def configurar_apis():
@@ -22,81 +21,78 @@ def configurar_apis():
     convertapi.api_credentials = chave 
     return True
 
-# --- 2. PASSO 1: CONVERTER IMAGEM PARA WORD ---
-def passo_1_criar_word(arquivo_upload):
+# --- 2. PASSO 1: PADRONIZAR (FOTO -> PDF MUDO) ---
+# Essa função roda NO SEU SERVIDOR (Não gasta crédito, não falha)
+def transformar_foto_em_pdf_local(arquivo_upload):
     try:
-        nome = arquivo_upload.name
-        ext = os.path.splitext(nome)[1].lower() or ".jpg"
+        image = Image.open(arquivo_upload)
+        
+        # Converte para RGB (Evita erro com PNG transparente)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
 
-        # Salva temporário
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as t_in:
-            t_in.write(arquivo_upload.getvalue())
+        # Cria uma folha A4 Branca em memória
+        # A4 em 72 DPI = 595 x 842 pixels (Padrão PDF)
+        # Vamos fazer um pouco maior para garantir qualidade
+        a4_width, a4_height = 1240, 1754 
+        canvas = Image.new('RGB', (a4_width, a4_height), (255, 255, 255))
+        
+        # Redimensiona a imagem para caber na folha (mantendo proporção)
+        image.thumbnail((a4_width - 100, a4_height - 100), Image.Resampling.LANCZOS)
+        
+        # Centraliza
+        x = (a4_width - image.width) // 2
+        y = (a4_height - image.height) // 2
+        canvas.paste(image, (x, y))
+        
+        # Salva como PDF em memória
+        pdf_bytes = io.BytesIO()
+        canvas.save(pdf_bytes, format='PDF', resolution=150)
+        pdf_bytes.seek(0)
+        
+        return pdf_bytes
+
+    except Exception as e:
+        st.error(f"Erro ao criar PDF local: {e}")
+        return None
+
+# --- 3. PASSO 2: A MÁGICA (PDF MUDO -> PDF PESQUISÁVEL) ---
+# Agora mandamos pro site o arquivo que JÁ É PDF. Ele só faz o OCR.
+def aplicar_ocr_na_nuvem(arquivo_pdf_bytes, nome_original):
+    try:
+        # Salva o PDF mudo temporariamente
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as t_in:
+            t_in.write(arquivo_pdf_bytes.getvalue())
             input_path = t_in.name
 
-        # Parâmetros de Limpeza e Leitura
+        # Manda para a API
+        # Como já é PDF, o site usa o motor de OCR de PDF (que você disse que funciona!)
         parametros = {
             'File': input_path,
             'Ocr': 'true',
-            'OcrLanguage': 'pt',
-            'ImagePreprocessing': 'true',
-            'RemoveNoise': 'true',
-            'StoreFile': 'true'
+            'OcrLanguage': 'pt',     # Português
+            'PdfVersion': '1.7',
+            'StoreFile': 'true'      # Devolve o arquivo
         }
 
-        # Chama a API para criar DOCX
-        result = convertapi.convert('docx', parametros)
+        result = convertapi.convert('pdf', parametros)
         
-        # Baixa o Word
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as t_out:
+        # Baixa o PDF pronto
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as t_out:
             result.save_files(t_out.name)
-            output_word_path = t_out.name
+            output_path = t_out.name
             
-        # Lê para a memória
-        with open(output_word_path, 'rb') as f:
-            word_bytes = f.read()
-
-        # Limpa o arquivo de entrada
-        if os.path.exists(input_path): os.remove(input_path)
-        if os.path.exists(output_word_path): os.remove(output_word_path)
-
-        return io.BytesIO(word_bytes)
-
-    except Exception as e:
-        st.error(f"Erro no Passo 1 (Word): {e}")
-        return None
-
-# --- 3. PASSO 2: CONVERTER WORD PARA PDF ---
-def passo_2_criar_pdf(word_bytesio, nome_original):
-    try:
-        # Salva o Word que veio do Passo 1 num arquivo temporário
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as t_word:
-            t_word.write(word_bytesio.getvalue())
-            word_path = t_word.name
-
-        # Converte Word -> PDF (Rápido e Seguro)
-        result = convertapi.convert('pdf', {
-            'File': word_path,
-            'PdfA': 'true',  # PDF/A (Arquivo Seguro)
-            'PdfVersion': '1.7',
-            'StoreFile': 'true'
-        })
-
-        # Baixa o PDF
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as t_pdf:
-            result.save_files(t_pdf.name)
-            output_pdf_path = t_pdf.name
-
-        with open(output_pdf_path, 'rb') as f:
-            pdf_bytes = f.read()
+        with open(output_path, 'rb') as f:
+            final_bytes = f.read()
 
         # Limpa
-        if os.path.exists(word_path): os.remove(word_path)
-        if os.path.exists(output_pdf_path): os.remove(output_pdf_path)
+        if os.path.exists(input_path): os.remove(input_path)
+        if os.path.exists(output_path): os.remove(output_path)
 
-        return io.BytesIO(pdf_bytes)
+        return io.BytesIO(final_bytes)
 
     except Exception as e:
-        st.error(f"Erro no Passo 2 (PDF): {e}")
+        st.error(f"Erro na API: {e}")
         return None
 
 # --- 4. GOOGLE DRIVE ---
@@ -127,8 +123,8 @@ def upload_drive(service, file_obj, name, folder_id, mime):
         st.error(f"Erro Upload: {e}")
         return False
 
-# --- 5. TELA PRINCIPAL ---
-st.title("🔄 Scanner Sequencial (Word -> PDF)")
+# --- 5. TELA ---
+st.title("📲 Scanner Universal (JPG vira PDF)")
 
 # ⚠️⚠️⚠️ SEU ID DA PASTA AQUI ⚠️⚠️⚠️
 FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
@@ -144,16 +140,16 @@ if configurar_apis():
         st.success(f"Cliente: **{st.session_state['cpf_atual']}**")
         if st.button("Trocar Cliente"): st.session_state["cpf_atual"] = ""; st.rerun()
         
-        st.info("Fluxo: Imagem -> Word (OCR) -> PDF Final.")
+        st.info("ℹ️ Estratégia: O sistema converte FOTO em PDF internamente, e depois manda para o OCR.")
         
-        files = st.file_uploader("Documentos", accept_multiple_files=True)
+        files = st.file_uploader("Documentos (Fotos ou PDF)", accept_multiple_files=True)
         
-        if files and st.button("Executar Conversão"):
+        if files and st.button("Processar Documentos"):
             service = get_drive_service()
             
-            # Trava de Segurança
+            # Trava de segurança
             if "COLOQUE" in FOLDER_ID_RAIZ:
-                st.error("🛑 Erro: ID da pasta não configurado na linha 134.")
+                st.error("🛑 ID da pasta não configurado na linha 140.")
                 st.stop()
 
             # Busca Pasta
@@ -164,35 +160,41 @@ if configurar_apis():
                 else: folder_id = service.files().create(body={'name': st.session_state['cpf_atual'], 'parents': [FOLDER_ID_RAIZ], 'mimeType': 'application/vnd.google-apps.folder'}).execute()['id']
                 
                 bar = st.progress(0)
-                status_box = st.empty()
+                status = st.empty()
                 
                 for i, f in enumerate(files):
-                    # --- FASE 1: CRIA O WORD ---
-                    status_box.markdown(f"**Fase 1/2:** Criando texto editável (Word) para `{f.name}`...")
-                    word_temp = passo_1_criar_word(f)
+                    status.text(f"Analisando: {f.name}...")
                     
-                    if word_temp:
-                        # --- FASE 2: CRIA O PDF ---
-                        status_box.markdown(f"**Fase 2/2:** Gerando PDF final para `{f.name}`...")
-                        time.sleep(1) # Pausa dramática para não travar API
-                        
-                        pdf_final = passo_2_criar_pdf(word_temp, f.name)
+                    arquivo_para_enviar = None
+                    
+                    # CASO 1: É UMA FOTO (JPG/PNG)?
+                    if f.type.startswith('image/'):
+                        status.text(f"Passo 1: Transformando foto {f.name} em PDF (Local)...")
+                        # Transforma em PDF aqui mesmo no Python
+                        arquivo_para_enviar = transformar_foto_em_pdf_local(f)
+                    
+                    # CASO 2: JÁ É PDF?
+                    else:
+                        status.text(f"Passo 1: {f.name} já é PDF. Preparando...")
+                        arquivo_para_enviar = f
+                    
+                    # ENVIAR PARA API (OCR)
+                    if arquivo_para_enviar:
+                        status.text(f"Passo 2: Aplicando OCR na nuvem em {f.name}...")
+                        pdf_final = aplicar_ocr_na_nuvem(arquivo_para_enviar, f.name)
                         
                         if pdf_final:
                             nome_final = f.name.rsplit('.', 1)[0] + ".pdf"
-                            status_box.markdown(f"Enviando `{nome_final}` para o Drive...")
                             upload_drive(service, pdf_final, nome_final, folder_id, 'application/pdf')
                         else:
-                            st.warning(f"Falha na Fase 2 (PDF).")
-                    else:
-                        st.warning(f"Falha na Fase 1 (Word) para {f.name}.")
-                        upload_drive(service, f, f.name, folder_id, f.type)
+                            st.warning(f"Falha no OCR de {f.name}. Salvando original.")
+                            upload_drive(service, f, f.name, folder_id, f.type)
                     
                     bar.progress((i+1)/len(files))
                 
-                status_box.text("Processo Finalizado!")
+                status.text("Concluído!")
                 st.balloons()
-                st.success("✅ Todos os arquivos foram processados e salvos como PDF!")
+                st.success("✅ Todos os arquivos agora são PDFs Pesquisáveis!")
                 
             except Exception as e:
                 st.error(f"Erro Geral: {e}")
