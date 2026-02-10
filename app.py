@@ -48,7 +48,7 @@ st.info("Arquivos serão organizados na pasta: **IRPF / Pablo Henrique**")
 
 # ID DA PASTA NO DRIVE (Você pega isso na URL quando abre a pasta no navegador)
 # Exemplo: drive.google.com/drive/folders/1abcDEFgHiJkLmNoPqRsTuVwXyZ
-FOLDER_ID_DESTINO = "COLOQUE_O_ID_DA_SUA_PASTA_AQUI" 
+FOLDER_ID_DESTINO = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
 
 uploaded_file = st.file_uploader("Selecione o documento (Foto ou PDF)", type=['png', 'jpg', 'jpeg', 'pdf'])
 
