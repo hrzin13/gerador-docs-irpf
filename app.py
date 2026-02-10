@@ -24,31 +24,35 @@ def configurar_apis():
 
 # --- 2. A MÁGICA (OCR EM PORTUGUÊS) ---
 def converter_para_pdf_pesquisavel(arquivo_upload):
+# --- VERSÃO TURBO: LIMPA A IMAGEM ANTES DE LER ---
+def converter_na_nuvem(arquivo_upload):
     try:
         nome_arquivo = arquivo_upload.name
-        extensao = os.path.splitext(nome_arquivo)[1].lower()
-        if not extensao: extensao = ".jpg"
+        extensao = os.path.splitext(nome_arquivo)[1].lower() or ".jpg"
 
-        # 1. Salva o arquivo original temporariamente
+        # Salva temporário
         with tempfile.NamedTemporaryFile(delete=False, suffix=extensao) as temp_input:
             temp_input.write(arquivo_upload.getvalue())
             input_path = temp_input.name
 
-        # 2. Configura o Robô para ler em PORTUGUÊS
+        # --- PARÂMETROS DE ELITE ---
+        # Aqui a gente obriga o robô a tratar a imagem
         parametros = {
             'File': input_path,
-            'Ocr': 'true',            # LIGA o leitor
-            'OcrLanguage': 'pt',      # <--- O SEGREDO (Português)
-            'StoreFile': 'true',
-            'ScaleProportional': 'true',
-            'PageSize': 'a4'          # Força o tamanho A4
+            'Ocr': 'true',               # Ligar Leitura
+            'OcrLanguage': 'pt',         # Português
+            'OcrMode': 'Force',          # <--- OBRIGA a ler mesmo se estiver ruim
+            'ImagePreprocessing': 'true',# <--- LIMPA a imagem antes (essencial pra cupom)
+            'RemoveNoise': 'true',       # Tira sujeira do papel
+            'Deskew': 'true',            # Desentorta
+            'ScaleImage': 'true',        # Melhora a resolução
+            'StoreFile': 'true'
         }
 
-        # 3. Manda converter
-        # Se o arquivo já for PDF, ele extrai o texto. Se for imagem, ele cria o PDF.
+        # Envia pra API
         result = convertapi.convert('pdf', parametros)
         
-        # 4. Baixa o resultado
+        # Baixa o PDF
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_output:
             result.save_files(temp_output.name)
             output_path = temp_output.name
@@ -56,33 +60,17 @@ def converter_para_pdf_pesquisavel(arquivo_upload):
         with open(output_path, 'rb') as f:
             pdf_bytes = f.read()
             
-        # Limpa a sujeira
+        # Limpa sujeira
         if os.path.exists(input_path): os.remove(input_path)
         if os.path.exists(output_path): os.remove(output_path)
         
         return io.BytesIO(pdf_bytes)
 
     except Exception as e:
+        # Se der erro, mostra no Streamlit pra gente saber
         st.error(f"Erro na conversão: {e}")
         return None
 
-# --- 3. GOOGLE DRIVE ---
-def get_drive_service():
-    try:
-        if "gcp_service_account" in st.secrets:
-            creds = service_account.Credentials.from_service_account_info(
-                st.secrets["gcp_service_account"], scopes=['https://www.googleapis.com/auth/drive'])
-        elif "google_auth" in st.secrets:
-            info = st.secrets["google_auth"]
-            creds = Credentials(None, refresh_token=info["refresh_token"], 
-                              token_uri="https://oauth2.googleapis.com/token",
-                              client_id=info["client_id"], client_secret=info["client_secret"])
-        else:
-            return None
-        return build('drive', 'v3', credentials=creds)
-    except Exception as e:
-        st.error(f"Erro Google: {e}")
-        return None
 
 def upload_drive(service, file_obj, name, folder_id, mime):
     try:
