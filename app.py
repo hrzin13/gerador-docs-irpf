@@ -89,7 +89,7 @@ def upload_drive(service, file_obj, name, folder_id, mime):
 st.title("📝 Teste Word (Editável)")
 
 # ⚠️⚠️⚠️ NÃO ESQUEÇA O ID DA PASTA AQUI EMBAIXO ⚠️⚠️⚠️
-FOLDER_ID_RAIZ = "COLOQUE_SEU_ID_AQUI" 
+FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
 
 if configurar_apis():
     if "cpf_atual" not in st.session_state: st.session_state["cpf_atual"] = ""
