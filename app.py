@@ -7,25 +7,33 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-st.set_page_config(page_title="Robô Arquivista (Raio-X)", layout="centered")
+st.set_page_config(page_title="Robô Arquivista (Blindado)", layout="centered")
 
 # --- 1. O CÉREBRO DO ROBÔ (PALAVRAS SEM ACENTO E MINÚSCULAS) ---
-# Dica: Coloque as palavras aqui sempre minúsculas e sem acento!
 CEREBRO_DO_ROBO = {
     "1. Despesas Médicas": ["unimed", "hospital", "clinica", "medico", "dentista", "odontologia", "exame", "laboratorio", "saude", "psicologo", "fonoaudiologo"],
     "2. Educação": ["escola", "faculdade", "universidade", "colegio", "ensino", "educacao", "mensalidade", "curso", "pos-graduacao"],
-    "3. Rendimentos": ["extrato", "banco", "itau", "bradesco", "nubank", "inter", "caixa", "santander", "financiamento", "consorcio", "comprovante de pagamento", "informe de rendimentos", "comprovante de rendimentos", "holerite", "salario", "pro-labore", "dirf"],
+    "3. Rendimentos": ["informe de rendimentos", "comprovante de rendimentos", "holerite", "salario", "pro-labore", "dirf"],
+    "4. Bancos e Finanças": ["extrato", "banco", "itau", "bradesco", "nubank", "inter", "caixa", "santander", "financiamento", "consorcio", "comprovante de pagamento"],
     "5. Impostos Pagos": ["darf", "das", "simples nacional", "receita federal", "guia", "tributo"],
     "6. Veículos": ["ipva", "licenciamento", "detran", "veiculo", "carro", "moto"],
     "7. Imóveis": ["iptu", "aluguel", "condominio", "imovel", "escritura"]
 }
 
-# --- 2. FUNÇÃO EXTRA: REMOVER ACENTOS ---
+# --- 2. FERRAMENTAS DE TEXTO (LIMPEZA E NORMALIZAÇÃO) ---
+
+def limpar_apenas_numeros(texto):
+    """A Peneira: Remove tudo que não é número."""
+    resultado = ""
+    for caractere in texto:
+        if caractere.isdigit():
+            resultado += caractere
+    return resultado
+
 def normalizar_texto(texto):
-    # Transforma "Atenção" em "atencao"
+    """Remove acentos e deixa minúsculo para comparação."""
     try:
-        texto = texto.lower() # Tudo minúsculo
-        # Remove acentos (Mágica do Unicode)
+        texto = texto.lower()
         nfkd_form = unicodedata.normalize('NFKD', texto)
         texto_sem_acento = "".join([c for c in nfkd_form if not unicodedata.combining(c)])
         return texto_sem_acento
@@ -50,7 +58,7 @@ def get_drive_service():
         st.error(f"Erro Conexão Google: {e}")
         return None
 
-# --- 4. GOOGLE OCR ---
+# --- 4. GOOGLE OCR (LÊ IMAGENS) ---
 def ocr_pelo_google(service, arquivo_upload, folder_temp_id):
     try:
         meta = {'name': "temp_ocr", 'mimeType': 'application/vnd.google-apps.document', 'parents': [folder_temp_id]}
@@ -66,35 +74,33 @@ def ocr_pelo_google(service, arquivo_upload, folder_temp_id):
         st.error(f"Erro no OCR: {e}")
         return None
 
-# --- 5. A INTELIGÊNCIA (AGORA LÊ TUDO E NORMALIZA) ---
+# --- 5. A INTELIGÊNCIA (LÊ TUDO E CLASSIFICA) ---
 def decidir_pasta(pdf_bytes):
     try:
         reader = PdfReader(pdf_bytes)
         texto_completo = ""
         
-        # Lê TODAS as páginas (Página 1, 2, 3...) e junta num textão só
+        # Lê TODAS as páginas
         for page in reader.pages:
             texto_completo += (page.extract_text() or "") + " "
         
-        # Limpa o texto (Tira acento e deixa minúsculo)
         texto_limpo = normalizar_texto(texto_completo)
         
         # Procura palavras-chave
         for pasta, palavras_chave in CEREBRO_DO_ROBO.items():
             for palavra in palavras_chave:
-                # Normaliza a palavra chave também pra garantir
                 palavra_limpa = normalizar_texto(palavra)
-                
                 if palavra_limpa in texto_limpo:
-                    return pasta, palavra, texto_limpo # Retorna o texto limpo pra gente ver
+                    return pasta, palavra, texto_limpo
         
         return "Geral (Não Identificado)", None, texto_limpo
     except Exception as e:
         return "Geral (Erro Leitura)", None, ""
 
-# --- 6. O ARQUIVISTA ---
+# --- 6. O ARQUIVISTA (SALVA NO DRIVE) ---
 def salvar_na_pasta_certa(service, pdf_bytes, nome_arquivo, nome_pasta, id_cliente):
     try:
+        # Verifica se a sub-pasta (ex: "Saude") já existe dentro da pasta do cliente
         q = f"name = '{nome_pasta}' and '{id_cliente}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed=false"
         results = service.files().list(q=q, fields="files(id)").execute()
         pastas = results.get('files', [])
@@ -114,63 +120,92 @@ def salvar_na_pasta_certa(service, pdf_bytes, nome_arquivo, nome_pasta, id_clien
         st.error(f"Erro ao salvar: {e}")
         return False
 
-# --- 7. TELA ---
-st.title("🤖 Robô Arquivista (Raio-X)")
+# --- 7. INTERFACE E FLUXO PRINCIPAL ---
+st.title("🤖 Robô Arquivista (Blindado)")
 
-# ⚠️⚠️⚠️ SEU ID DA PASTA AQUI ⚠️⚠️⚠️
+# ⚠️⚠️⚠️ COLOQUE O ID DA SUA PASTA RAIZ AQUI ⚠️⚠️⚠️
 FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
 
 service = get_drive_service()
 
 if service:
-    if "cpf_atual" not in st.session_state: st.session_state["cpf_atual"] = ""
+    # Inicializa sessão
+    if "cpf_atual" not in st.session_state: 
+        st.session_state["cpf_atual"] = ""
 
+    # TELA 1: LOGIN DO CLIENTE (COM VALIDAÇÃO)
     if not st.session_state["cpf_atual"]:
-        cpf = st.text_input("Nome/CPF do Cliente:")
-        if st.button("Acessar"): 
-            if len(cpf) > 3: st.session_state["cpf_atual"] = cpf; st.rerun()
+        st.subheader("Acesso ao Arquivo")
+        entrada_usuario = st.text_input("Digite o CPF do Cliente (com ou sem pontos):")
+        
+        if st.button("Acessar Pasta"):
+            # 1. Passa na Peneira (Limpa)
+            cpf_limpo = limpar_apenas_numeros(entrada_usuario)
+            
+            # 2. O Portão (Valida tamanho)
+            if len(cpf_limpo) == 11:
+                st.session_state["cpf_atual"] = cpf_limpo
+                st.rerun() # Recarrega a página já logado
+            else:
+                st.error(f"❌ CPF Inválido! Encontrei {len(cpf_limpo)} números. O CPF deve ter exatamente 11 dígitos.")
+
+    # TELA 2: ÁREA DE TRABALHO (JÁ LOGADO)
     else:
-        st.success(f"🗂️ Cliente: **{st.session_state['cpf_atual']}**")
-        if st.button("Sair"): st.session_state["cpf_atual"] = ""; st.rerun()
+        st.success(f"🗂️ Trabalhando na pasta do CPF: **{st.session_state['cpf_atual']}**")
         
-        st.info("O Robô agora lê **todas as páginas** e ignora acentos/maiúsculas.")
+        col1, col2 = st.columns([3, 1])
+        with col2:
+            if st.button("Sair / Trocar CPF"): 
+                st.session_state["cpf_atual"] = ""
+                st.rerun()
         
-        files = st.file_uploader("Arquivos", accept_multiple_files=True)
+        st.info("O Robô lê todas as páginas, ignora acentos e organiza automaticamente.")
         
-        if files and st.button("Processar"):
+        files = st.file_uploader("Solte os documentos aqui (PDF ou Imagens):", accept_multiple_files=True)
+        
+        if files and st.button("Processar Documentos"):
             
             if "COLOQUE" in FOLDER_ID_RAIZ:
-                st.error("🛑 ID da pasta não configurado (Linha 138).")
+                st.error("🛑 PARE! Você esqueceu de configurar o ID da pasta raiz no código (Linha 127).")
                 st.stop()
 
-            # Pega pasta do cliente
+            # Pega ou Cria a pasta do cliente (CPF Limpo) no Drive
             try:
-                q = f"name = '{st.session_state['cpf_atual']}' and '{FOLDER_ID_RAIZ}' in parents and trashed=false"
+                cpf_pasta = st.session_state['cpf_atual']
+                q = f"name = '{cpf_pasta}' and '{FOLDER_ID_RAIZ}' in parents and trashed=false"
                 res = service.files().list(q=q).execute().get('files', [])
-                if res: id_pasta_cliente = res[0]['id']
-                else: id_pasta_cliente = service.files().create(body={'name': st.session_state['cpf_atual'], 'parents': [FOLDER_ID_RAIZ], 'mimeType': 'application/vnd.google-apps.folder'}).execute()['id']
+                
+                if res: 
+                    id_pasta_cliente = res[0]['id']
+                    st.toast("Pasta do cliente encontrada!")
+                else: 
+                    id_pasta_cliente = service.files().create(body={
+                        'name': cpf_pasta, 
+                        'parents': [FOLDER_ID_RAIZ], 
+                        'mimeType': 'application/vnd.google-apps.folder'
+                    }).execute()['id']
+                    st.toast("Nova pasta criada para este CPF!")
                 
                 bar = st.progress(0)
                 
                 for i, f in enumerate(files):
                     st.write(f"--- Processando: **{f.name}** ---")
                     
-                    # 1. OCR
+                    # 1. OCR (Converte imagem/PDF em PDF pesquisável)
                     pdf_pronto = ocr_pelo_google(service, f, id_pasta_cliente)
                     
                     if pdf_pronto:
-                        # 2. Decide Pasta (Lê tudo)
+                        # 2. Decide Pasta (Lê texto)
                         nome_pasta, palavra, texto_lido = decidir_pasta(pdf_pronto)
                         
                         if palavra:
-                            st.success(f"✅ Classificado como: **{nome_pasta}** (Palavra: '{palavra}')")
+                            st.success(f"✅ Classificado como: **{nome_pasta}** (Palavra-chave: '{palavra}')")
                         else:
                             st.warning(f"⚠️ Não identificado. Indo para: **{nome_pasta}**")
                             
-                        # --- RAIO X (DEBUG) ---
-                        # Aqui você vê o que o robô leu!
-                        with st.expander("🔍 Ver o que o robô leu (Raio-X)"):
-                            st.text(texto_lido[0:1000] + "...") # Mostra os primeiros 1000 caracteres
+                        # RAIO X
+                        with st.expander("🔍 Ver o que o robô leu"):
+                            st.text(texto_lido[0:1000] + "...") 
                         
                         # 3. Salva
                         nome_final = f.name.rsplit('.', 1)[0] + ".pdf"
@@ -180,7 +215,7 @@ if service:
                     bar.progress((i+1)/len(files))
                 
                 st.balloons()
-                st.success("Concluído!")
+                st.success("Tudo arquivado com sucesso!")
                 
             except Exception as e:
                 st.error(f"Erro Geral: {e}")
