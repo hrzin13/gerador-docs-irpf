@@ -14,8 +14,7 @@ st.set_page_config(page_title="Robô Arquivista (Raio-X)", layout="centered")
 CEREBRO_DO_ROBO = {
     "1. Despesas Médicas": ["unimed", "hospital", "clinica", "medico", "dentista", "odontologia", "exame", "laboratorio", "saude", "psicologo", "fonoaudiologo"],
     "2. Educação": ["escola", "faculdade", "universidade", "colegio", "ensino", "educacao", "mensalidade", "curso", "pos-graduacao"],
-    "3. Rendimentos": ["informe de rendimentos", "comprovante de rendimentos", "holerite", "salario", "pro-labore", "dirf"],
-    "4. Bancos e Finanças": ["extrato", "banco", "itau", "bradesco", "nubank", "inter", "caixa", "santander", "financiamento", "consorcio", "comprovante de pagamento"],
+    "3. Rendimentos": ["extrato", "banco", "itau", "bradesco", "nubank", "inter", "caixa", "santander", "financiamento", "consorcio", "comprovante de pagamento", "informe de rendimentos", "comprovante de rendimentos", "holerite", "salario", "pro-labore", "dirf"],
     "5. Impostos Pagos": ["darf", "das", "simples nacional", "receita federal", "guia", "tributo"],
     "6. Veículos": ["ipva", "licenciamento", "detran", "veiculo", "carro", "moto"],
     "7. Imóveis": ["iptu", "aluguel", "condominio", "imovel", "escritura"]
