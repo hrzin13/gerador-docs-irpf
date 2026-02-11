@@ -10,9 +10,10 @@ from googleapiclient.http import MediaIoBaseUpload
 
 app = Flask(__name__)
 
-# --- CONFIGURAÇÕES IGUAIS AO DO SEU SITE ---
-# (O Estagiário precisa saber onde guardar as coisas)
-FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ"  # <--- O MESMO ID DO OUTRO CÓDIGO
+# --- CONFIGURAÇÕES ---
+# ⚠️ GARANTA QUE O ID ABAIXO ESTÁ CERTO (É A PASTA RAIZ DO DRIVE)
+FOLDER_ID_RAIZ = "1hxtNpuLtMiwfahaBRQcKrH6w_2cN_YFQ" 
+
 CEREBRO_DO_ROBO = {
     "1. Despesas Médicas": ["unimed", "hospital", "clinica", "medico", "dentista"],
     "2. Educação": ["escola", "faculdade", "universidade", "colegio", "ensino"],
@@ -23,20 +24,45 @@ CEREBRO_DO_ROBO = {
     "7. Imóveis": ["iptu", "aluguel", "condominio"]
 }
 
-# --- FUNÇÕES VITAIS (CÓPIA SEGURA PARA MOBILE) ---
-# O estagiário usa as mesmas ferramentas, mas sem a parte visual do Streamlit
+# --- FUNÇÕES ---
 
 def get_drive_service():
-    # Procura o arquivo json na mesma pasta
     try:
-        # Tenta achar o arquivo de credenciais padrão
+        # Tenta pegar as credenciais do arquivo json (que vc subiu no Render como Secret File)
         creds = service_account.Credentials.from_service_account_file(
-            'service_account.json', # <--- TENHA CERTEZA QUE ESSE ARQUIVO ESTÁ NA PASTA
+            'service_account.json', 
             scopes=['https://www.googleapis.com/auth/drive']
         )
         return build('drive', 'v3', credentials=creds)
     except Exception as e:
-        print(f"Erro no Google: {e}")
+        print(f"Erro Auth Google: {e}")
+        return None
+
+def ocr_google_drive(service, arquivo_bytes, nome_arquivo):
+    """
+    Mágica: Sobe a FOTO pro Drive convertendo pra Google Docs (OCR),
+    depois baixa como PDF com texto selecionável.
+    """
+    try:
+        # 1. Sobe como Google Doc (faz o OCR)
+        meta = {
+            'name': nome_arquivo, 
+            'mimeType': 'application/vnd.google-apps.document', # Isso força o OCR
+            'parents': [FOLDER_ID_RAIZ] # Usa a pasta raiz temporariamente
+        }
+        media = MediaIoBaseUpload(arquivo_bytes, mimetype='image/jpeg', resumable=True)
+        arquivo_criado = service.files().create(body=meta, media_body=media, fields='id').execute()
+        file_id = arquivo_criado.get('id')
+
+        # 2. Baixa de volta como PDF
+        pdf_content = service.files().export(fileId=file_id, mimeType='application/pdf').execute()
+        
+        # 3. Limpa a bagunça (apaga o arquivo temporário do Drive)
+        service.files().delete(fileId=file_id).execute()
+
+        return io.BytesIO(pdf_content)
+    except Exception as e:
+        print(f"Erro no OCR: {e}")
         return None
 
 def normalizar_texto(texto):
@@ -52,61 +78,78 @@ def decidir_pasta(pdf_bytes):
         for page in reader.pages: texto += (page.extract_text() or "") + " "
         texto_limpo = normalizar_texto(texto)
         
+        # Debug: Imprime o que leu no log do Render (ajuda a achar erros)
+        print(f"Texto lido: {texto_limpo[:100]}") 
+
         for pasta, palavras in CEREBRO_DO_ROBO.items():
             for p in palavras:
                 if normalizar_texto(p) in texto_limpo: return pasta
         return "Geral (Não Identificado)"
-    except: return "Erro Leitura"
+    except Exception as e:
+        print(f"Erro Leitura PDF: {e}")
+        return "Erro Leitura"
 
-def salvar_drive(service, pdf_bytes, nome_arq, nome_pasta, id_cliente):
+def salvar_drive(service, pdf_bytes, nome_arq, nome_pasta):
     try:
-        # Acha pasta destino
-        q = f"name = '{nome_pasta}' and '{id_cliente}' in parents and trashed=false"
+        # Acha pasta destino ou cria
+        q = f"name = '{nome_pasta}' and '{FOLDER_ID_RAIZ}' in parents and trashed=false"
         res = service.files().list(q=q).execute().get('files', [])
         if not res:
-            meta = {'name': nome_pasta, 'parents': [id_cliente], 'mimeType': 'application/vnd.google-apps.folder'}
+            meta = {'name': nome_pasta, 'parents': [FOLDER_ID_RAIZ], 'mimeType': 'application/vnd.google-apps.folder'}
             id_destino = service.files().create(body=meta).execute()['id']
         else: id_destino = res[0]['id']
         
-        # Salva arquivo
+        # Salva o arquivo final
         meta_arq = {'name': nome_arq, 'parents': [id_destino]}
         media = MediaIoBaseUpload(pdf_bytes, mimetype='application/pdf')
         service.files().create(body=meta_arq, media_body=media).execute()
         return True
-    except: return False
+    except Exception as e:
+        print(f"Erro Salvar: {e}")
+        return False
 
-# --- O OUVIDO DO ESTAGIÁRIO (WHATSAPP) ---
+# --- ROTAS ---
 @app.route("/bot", methods=['POST'])
 def bot():
-    msg = request.values.get('Body', '').strip()
     tem_arquivo = int(request.values.get('NumMedia', 0))
     resp = MessagingResponse()
     
-    # Lógica Simplificada para Celular:
-    # 1. O usuário manda CPF na legenda ou texto anterior (vamos supor que é fixo ou vc manda antes)
-    # Para facilitar no celular, vamos fazer ele salvar numa pasta "TRIAGEM_ZAP" se não tiver CPF
-    
     if tem_arquivo > 0:
         url = request.values.get('MediaUrl0')
-        pdf_bytes = io.BytesIO(requests.get(url).content)
+        tipo = request.values.get('MediaContentType0') # image/jpeg, application/pdf, etc
+        
+        # Baixa o arquivo do WhatsApp
+        r = requests.get(url)
+        arquivo_original = io.BytesIO(r.content)
         
         service = get_drive_service()
         if service:
-            # 1. Classifica
-            pasta_destino = decidir_pasta(pdf_bytes)
             
-            # 2. Salva na Raiz (ou pasta específica de Triagem)
-            # Como não temos o CPF aqui fácil sem login, salvamos na pasta Raiz com o nome da categoria
-            # Você depois move pelo site visualmente
-            
-            pdf_bytes.seek(0)
-            salvar_drive(service, pdf_bytes, f"ZAP_{pasta_destino}.pdf", FOLDER_ID_RAIZ, FOLDER_ID_RAIZ)
-            
-            resp.message(f"✅ Recebi! Classifiquei como *{pasta_destino}* e salvei no Drive.")
+            # SE FOR IMAGEM -> FAZ OCR
+            if "image" in tipo:
+                pdf_para_ler = ocr_google_drive(service, arquivo_original, "temp_ocr")
+            # SE JÁ FOR PDF -> LÊ DIRETO
+            elif "pdf" in tipo:
+                pdf_para_ler = arquivo_original
+            else:
+                resp.message("❌ Formato não suportado. Mande Foto ou PDF.")
+                return str(resp)
+
+            if pdf_para_ler:
+                # 1. Classifica
+                pasta_destino = decidir_pasta(pdf_para_ler)
+                
+                # 2. Salva
+                pdf_para_ler.seek(0) # Volta pro início do arquivo
+                salvar_drive(service, pdf_para_ler, f"ZAP_DOC.pdf", pasta_destino)
+                
+                resp.message(f"✅ Recebi! Classifiquei como *{pasta_destino}* e salvei no Drive.")
+            else:
+                resp.message("❌ Erro ao processar a imagem.")
         else:
-            resp.message("❌ Erro de conexão com o Google.")
+            resp.message("❌ Erro de conexão com o Google (Chave Secreta).")
     else:
-        resp.message("Mande uma foto ou PDF que eu guardo no Drive pra você.")
+        resp.message("Mande uma foto ou PDF.")
 
     return str(resp)
 
