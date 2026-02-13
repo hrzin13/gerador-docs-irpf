@@ -36,6 +36,14 @@ def get_drive_service():
         return build('drive', 'v3', credentials=creds)
     except Exception as e:
         return None
+def get_drive_service():
+    # ... (código que já existe) ...
+    creds = service_account.Credentials.from_service_account_file(...)
+    
+    # ADICIONE ISSO AQUI:
+    print(f"🕵️ E-MAIL DO ROBÔ: {creds.service_account_email}")
+    
+    return build(...)
 
 def ocr_google_drive(service, arquivo_bytes, nome_arquivo):
     """
