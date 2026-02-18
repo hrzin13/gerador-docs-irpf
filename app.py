@@ -2,7 +2,7 @@ import streamlit as st
 import io
 import unicodedata
 from pypdf import PdfReader
-from google.oauth2.credentials import Credentials # Importante para seu tipo de login
+from google.oauth2.credentials import Credentials 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import google.generativeai as genai
@@ -37,24 +37,19 @@ def configurar_visual_montanha():
 configurar_visual_montanha()
 
 # --- 1. CONFIGURAÇÃO DA IA (GEMINI) ---
-# Pega a chave direto dos seus secrets: gemini_api_key = "AIzaSy..."
 try:
     API_KEY = st.secrets["gemini_api_key"]
     genai.configure(api_key=API_KEY)
 except Exception as e:
     st.error("❌ Erro: Não encontrei a 'gemini_api_key' nos secrets.")
 
-# --- 2. CONFIGURAÇÃO DO GOOGLE DRIVE (Ajustado para seu google_auth) ---
+# --- 2. CONFIGURAÇÃO DO GOOGLE DRIVE ---
 def get_drive_service():
-    """Conecta no Drive usando o refresh_token dos seus secrets"""
     try:
-        # Verifica se existe a seção [google_auth] nos secrets
         if "google_auth" in st.secrets:
             info = st.secrets["google_auth"]
-            
-            # Monta a credencial usando seus dados
             creds = Credentials(
-                None, # Access token (será gerado automaticamente)
+                None, 
                 refresh_token=info["refresh_token"],
                 token_uri="https://oauth2.googleapis.com/token",
                 client_id=info["client_id"],
@@ -79,38 +74,49 @@ def extrair_texto_do_pdf(pdf_bytes):
     except:
         return ""
 
+# --- AQUI ESTÁ A CORREÇÃO (FUNÇÃO BLINDADA) ---
 def gerar_conteudo_com_ia(texto_base, tipo_conteudo):
-    # Tenta usar o modelo Pro, se falhar tenta o Flash
-    modelo_nome = 'gemini-1.5-flash' 
-    try:
-        model = genai.GenerativeModel(modelo_nome)
-        prompts = {
-            "Post Instagram": """
-                Atue como Social Media. Crie um Post de Instagram (Carrossel).
-                Estrutura: Título Impactante + 3 Dicas Práticas + Chamada para Ação.
-                Use emojis. Seja direto.
-                """,
-            "Resumo Simples": "Resuma o texto de forma didática para leigos.",
-            "Extrair Dados": "Liste apenas: Datas, Valores (R$) e Nomes Próprios."
-        }
-        prompt = f"{prompts.get(tipo_conteudo)}\n\nTexto:\n{texto_base}"
-        return model.generate_content(prompt).text
-    except Exception as e:
-        return f"Erro na IA ({modelo_nome}): {e}"
+    # Lista de modelos para tentar em ordem. Se um falhar, tenta o próximo.
+    # O 'gemini-pro' costuma ser o mais compatível.
+    tentativas = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-pro', 'gemini-1.0-pro']
+    
+    prompts = {
+        "Post Instagram": """
+            Atue como Social Media. Crie um Post de Instagram (Carrossel).
+            Estrutura: Título Impactante + 3 Dicas Práticas + Chamada para Ação.
+            Use emojis. Seja direto.
+            """,
+        "Resumo Simples": "Resuma o texto de forma didática para leigos.",
+        "Extrair Dados": "Liste apenas: Datas, Valores (R$) e Nomes Próprios."
+    }
+    
+    prompt_final = f"{prompts.get(tipo_conteudo)}\n\nTexto para analisar:\n{texto_base}"
+    
+    log_erros = []
+
+    # Loop para tentar conectar em cada modelo da lista
+    for modelo_nome in tentativas:
+        try:
+            model = genai.GenerativeModel(modelo_nome)
+            # Tenta gerar
+            response = model.generate_content(prompt_final)
+            return response.text # Sucesso! Retorna o texto e sai da função.
+        except Exception as e:
+            # Se der erro, guarda no log e tenta o próximo da lista
+            log_erros.append(f"Erro com {modelo_nome}: {str(e)}")
+            continue 
+
+    # Se chegou aqui, todos falharam
+    return f"❌ Falha Total na IA. Nenhum modelo respondeu. Detalhes:\n" + "\n".join(log_erros)
 
 def ocr_pelo_google(service, arquivo, folder_id):
-    """Sobe imagem pro Drive, converte e baixa PDF"""
     try:
-        # Cria arquivo temporário Google Docs
         meta = {'name': "temp_ocr_gemini", 'mimeType': 'application/vnd.google-apps.document', 'parents': [folder_id]}
         media = MediaIoBaseUpload(arquivo, mimetype=arquivo.type, resumable=True)
         file_doc = service.files().create(body=meta, media_body=media, fields='id').execute()
         file_id = file_doc.get('id')
         
-        # Baixa como PDF (que agora tem texto selecionável)
         pdf_content = service.files().export(fileId=file_id, mimeType='application/pdf').execute()
-        
-        # Limpa a sujeira (deleta o arquivo temporário do Drive)
         service.files().delete(fileId=file_id).execute()
         
         return io.BytesIO(pdf_content)
@@ -122,10 +128,8 @@ def ocr_pelo_google(service, arquivo, folder_id):
 
 st.title("🏔️ Gestor Inteligente")
 
-# Tenta conectar
 service = get_drive_service()
 
-# Pega o ID da pasta direto dos secrets também!
 try:
     FOLDER_ID_RAIZ = st.secrets["google_auth"]["folder_id"]
 except:
@@ -135,7 +139,6 @@ except:
 if not service:
     st.warning("⚠️ Conexão Google Drive falhou. Verifique os secrets.")
 else:
-    # --- ABAS ---
     tab_conteudo, tab_arquivo = st.tabs(["✨ Criar Conteúdo (IA)", "📂 Arquivos"])
 
     # ABA 1: FÁBRICA DE CONTEÚDO
@@ -154,15 +157,12 @@ else:
                     res = gerar_conteudo_com_ia(texto, tipo)
                     
                     st.success("Pronto!")
-                    # Mostra resultado em destaque
                     st.markdown("### 📝 Resultado Gerado:")
                     st.markdown(res)
                     
-                    # Mostra texto original em um expansor
                     with st.expander("Ver texto original lido"):
                         st.text(texto)
 
-    # ABA 2: ARQUIVO (Sua lógica antiga simplificada)
+    # ABA 2: ARQUIVO
     with tab_arquivo:
         st.write("Seus arquivos organizados.")
-        # Se quiser implementar a lógica de salvar pastas depois, pode adicionar aqui.
