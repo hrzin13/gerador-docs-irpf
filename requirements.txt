@@ -8,3 +8,4 @@ flask
 twilio
 requests
 gunicorn
+google-generativeai
