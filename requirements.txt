@@ -1,11 +1,6 @@
+google-generativeai>=0.7.0
 streamlit
+pypdf
 google-auth
 google-auth-oauthlib
-google-auth-httplib2
 google-api-python-client
-pypdf
-flask
-twilio
-requests
-gunicorn
-google-generativeai
