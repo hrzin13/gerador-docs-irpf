@@ -74,11 +74,10 @@ def extrair_texto_do_pdf(pdf_bytes):
     except:
         return ""
 
-# --- AQUI ESTÁ A CORREÇÃO (FUNÇÃO BLINDADA) ---
+# --- AQUI ESTÁ A CORREÇÃO (DIAGNÓSTICO) ---
 def gerar_conteudo_com_ia(texto_base, tipo_conteudo):
-    # Lista de modelos para tentar em ordem. Se um falhar, tenta o próximo.
-    # O 'gemini-pro' costuma ser o mais compatível.
-    tentativas = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-pro', 'gemini-1.0-pro']
+    # Modelos para tentar
+    tentativas = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
     
     prompts = {
         "Post Instagram": """
@@ -94,20 +93,31 @@ def gerar_conteudo_com_ia(texto_base, tipo_conteudo):
     
     log_erros = []
 
-    # Loop para tentar conectar em cada modelo da lista
     for modelo_nome in tentativas:
         try:
             model = genai.GenerativeModel(modelo_nome)
-            # Tenta gerar
             response = model.generate_content(prompt_final)
-            return response.text # Sucesso! Retorna o texto e sai da função.
+            return response.text
         except Exception as e:
-            # Se der erro, guarda no log e tenta o próximo da lista
-            log_erros.append(f"Erro com {modelo_nome}: {str(e)}")
+            log_erros.append(f"Erro {modelo_nome}: {str(e)}")
             continue 
 
-    # Se chegou aqui, todos falharam
-    return f"❌ Falha Total na IA. Nenhum modelo respondeu. Detalhes:\n" + "\n".join(log_erros)
+    # SE TUDO FALHAR, ELE LISTA O QUE ESTÁ DISPONÍVEL
+    try:
+        modelos_disponiveis = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                modelos_disponiveis.append(m.name)
+        
+        return f"""❌ Falha Total.
+        
+        Seus modelos disponíveis são: {modelos_disponiveis}
+        
+        Erros detalhados:
+        {log_erros}
+        """
+    except:
+        return f"❌ Falha Total e não consegui listar modelos. Verifique se a API Key está ativa no Google AI Studio."
 
 def ocr_pelo_google(service, arquivo, folder_id):
     try:
@@ -133,7 +143,7 @@ service = get_drive_service()
 try:
     FOLDER_ID_RAIZ = st.secrets["google_auth"]["folder_id"]
 except:
-    st.warning("⚠️ 'folder_id' não encontrado em [google_auth]. Usando raiz.")
+    # Se der erro, usa root para não travar o app
     FOLDER_ID_RAIZ = "root"
 
 if not service:
@@ -156,9 +166,9 @@ else:
                     texto = extrair_texto_do_pdf(pdf)
                     res = gerar_conteudo_com_ia(texto, tipo)
                     
-                    st.success("Pronto!")
+                    st.success("Processo Finalizado!")
                     st.markdown("### 📝 Resultado Gerado:")
-                    st.markdown(res)
+                    st.markdown(res) # Se der erro, vai mostrar a lista de modelos aqui
                     
                     with st.expander("Ver texto original lido"):
                         st.text(texto)
