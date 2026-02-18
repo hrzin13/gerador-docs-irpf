@@ -74,10 +74,15 @@ def extrair_texto_do_pdf(pdf_bytes):
     except:
         return ""
 
-# --- AQUI ESTÁ A CORREÇÃO (DIAGNÓSTICO) ---
+# --- AQUI ESTÁ A CORREÇÃO (USANDO SEUS MODELOS REAIS) ---
 def gerar_conteudo_com_ia(texto_base, tipo_conteudo):
-    # Modelos para tentar
-    tentativas = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
+    # Lista atualizada com os modelos que VOCÊ TEM acesso (baseado no seu erro)
+    tentativas = [
+        'gemini-2.5-flash',       # Tenta o mais novo e rápido primeiro
+        'gemini-2.0-flash',       # Tenta a versão 2.0 estável
+        'gemini-2.5-pro',         # Tenta a versão Pro (mais potente)
+        'gemini-3-pro-preview'    # Tenta o experimental (se tudo falhar)
+    ]
     
     prompts = {
         "Post Instagram": """
@@ -102,22 +107,8 @@ def gerar_conteudo_com_ia(texto_base, tipo_conteudo):
             log_erros.append(f"Erro {modelo_nome}: {str(e)}")
             continue 
 
-    # SE TUDO FALHAR, ELE LISTA O QUE ESTÁ DISPONÍVEL
-    try:
-        modelos_disponiveis = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                modelos_disponiveis.append(m.name)
-        
-        return f"""❌ Falha Total.
-        
-        Seus modelos disponíveis são: {modelos_disponiveis}
-        
-        Erros detalhados:
-        {log_erros}
-        """
-    except:
-        return f"❌ Falha Total e não consegui listar modelos. Verifique se a API Key está ativa no Google AI Studio."
+    # Se chegar aqui, falhou em todos
+    return f"❌ Falha Total na IA.\nLog de erros:\n" + "\n".join(log_erros)
 
 def ocr_pelo_google(service, arquivo, folder_id):
     try:
@@ -143,7 +134,6 @@ service = get_drive_service()
 try:
     FOLDER_ID_RAIZ = st.secrets["google_auth"]["folder_id"]
 except:
-    # Se der erro, usa root para não travar o app
     FOLDER_ID_RAIZ = "root"
 
 if not service:
@@ -153,7 +143,7 @@ else:
 
     # ABA 1: FÁBRICA DE CONTEÚDO
     with tab_conteudo:
-        st.info("Suba uma foto e deixe a IA trabalhar.")
+        st.info(f"Usando motor de IA avançado (Série 2.5/3.0)")
         upload = st.file_uploader("Arquivo (Foto/PDF)", type=["png","jpg","jpeg","pdf"], key="up_ia")
         tipo = st.selectbox("O que você quer?", ["Post Instagram", "Resumo Simples", "Extrair Dados"])
         
@@ -168,7 +158,7 @@ else:
                     
                     st.success("Processo Finalizado!")
                     st.markdown("### 📝 Resultado Gerado:")
-                    st.markdown(res) # Se der erro, vai mostrar a lista de modelos aqui
+                    st.markdown(res)
                     
                     with st.expander("Ver texto original lido"):
                         st.text(texto)
