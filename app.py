@@ -1,6 +1,7 @@
 import streamlit as st
 import io
 import unicodedata
+import requests # <-- NOVA BIBLIOTECA ADICIONADA AQUI
 from pypdf import PdfReader
 from google.oauth2.credentials import Credentials 
 from googleapiclient.discovery import build
@@ -40,13 +41,20 @@ def configurar_visual_montanha():
 
 configurar_visual_montanha()
 
-# --- 1. CONFIGURAÇÃO DA IA (NOVO SDK) ---
+# --- 1. CONFIGURAÇÃO DAS APIs (GEMINI E HUGGING FACE) ---
 try:
     API_KEY = st.secrets["gemini_api_key"]
     client = genai.Client(api_key=API_KEY)
 except Exception as e:
     st.error("❌ Erro: Não encontrei a 'gemini_api_key' nos secrets.")
     client = None
+
+# Nova configuração para a Hugging Face
+try:
+    HF_TOKEN = st.secrets["hf_token"]
+except Exception as e:
+    # Fallback caso você queira testar localmente antes de colocar no secrets
+    HF_TOKEN = "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" 
 
 # --- 2. CONFIGURAÇÃO DO GOOGLE DRIVE ---
 def get_drive_service():
@@ -112,35 +120,23 @@ def gerar_conteudo_com_ia(texto_base, tipo_conteudo, pedir_imagem=False):
     return f"❌ Falha Total na IA.\nLog de erros:\n" + "\n".join(log_erros)
 
 def gerar_imagem_com_ia(prompt_visual):
-    """Tenta os modelos de imagem da família Imagen 4.0 (Os mais potentes)"""
-    # Usando os modelos exatos que o seu app listou como ativos!
-    modelos_imagem = [
-        'imagen-4.0-fast-generate-001', 
-        'imagen-4.0-generate-001',
-        'imagen-4.0-ultra-generate-001'
-    ]
+    """Gera imagens usando a API gratuita da Hugging Face (Stable Diffusion XL)"""
+    API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    payload = {"inputs": prompt_visual}
     
-    log_erros = []
-    if client:
-        for modelo in modelos_imagem:
-            try:
-                result = client.models.generate_images(
-                    model=modelo,
-                    prompt=prompt_visual,
-                    config=types.GenerateImagesConfig(
-                        number_of_images=1,
-                        aspect_ratio="1:1"
-                    )
-                )
-                
-                imagem_pronta = Image.open(io.BytesIO(result.generated_images[0].image.image_bytes))
-                return imagem_pronta
-                
-            except Exception as e:
-                log_erros.append(f"[{modelo}]: {str(e)}")
-                continue
+    try:
+        response = requests.post(API_URL, headers=headers, json=payload)
+        
+        if response.status_code == 200:
+            image_bytes = response.content
+            imagem_pronta = Image.open(io.BytesIO(image_bytes))
+            return imagem_pronta
+        else:
+            return f"❌ Erro na API Hugging Face: {response.text}"
             
-    return f"❌ Erro ao desenhar com Imagen 4.0:\n" + "\n".join(log_erros)
+    except Exception as e:
+        return f"❌ Erro de conexão ao tentar desenhar a imagem: {str(e)}"
 
 # --- 5. O MOTOR DO GOOGLE DRIVE (OCR) ---
 def ocr_pelo_google(service, arquivo, folder_id):
@@ -174,7 +170,7 @@ else:
     tab_conteudo, tab_arquivo = st.tabs(["✨ Criar Conteúdo (IA)", "📂 Arquivos"])
 
     with tab_conteudo:
-        st.info("Usando motor de IA avançado (Série 2.5/3.0 e Imagen 4.0)")
+        st.info("Usando motor de IA avançado para texto e Hugging Face para imagens")
         
         upload = st.file_uploader("Arquivo (Foto/PDF)", type=["png","jpg","jpeg","pdf"], key="up_ia")
         tipo = st.selectbox("O que você quer?", ["Post Instagram", "Resumo Simples", "Extrair Dados"])
