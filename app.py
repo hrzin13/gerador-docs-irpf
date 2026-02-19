@@ -28,7 +28,7 @@ def configurar_visual_montanha():
             padding: 10px;
         }}
         h1, h2, h3 {{ color: #ffffff !important; text-shadow: 2px 2px 4px #000000; }}
-        p, li, span {{ color: #e0e0e0 !important; font-weight: 500; }}
+        p, li, span, label {{ color: #e0e0e0 !important; font-weight: 500; }}
         </style>
         """,
         unsafe_allow_html=True
@@ -57,10 +57,8 @@ def get_drive_service():
             )
             return build('drive', 'v3', credentials=creds)
         else:
-            st.error("❌ Seção [google_auth] não encontrada no secrets.toml")
             return None
     except Exception as e:
-        st.error(f"❌ Erro na conexão com Google: {e}")
         return None
 
 # --- 3. FERRAMENTAS UTILITÁRIAS ---
@@ -74,15 +72,10 @@ def extrair_texto_do_pdf(pdf_bytes):
     except:
         return ""
 
-# --- AQUI ESTÁ A CORREÇÃO (USANDO SEUS MODELOS REAIS) ---
-def gerar_conteudo_com_ia(texto_base, tipo_conteudo):
-    # Lista atualizada com os modelos que VOCÊ TEM acesso (baseado no seu erro)
-    tentativas = [
-        'gemini-2.5-flash',       # Tenta o mais novo e rápido primeiro
-        'gemini-2.0-flash',       # Tenta a versão 2.0 estável
-        'gemini-2.5-pro',         # Tenta a versão Pro (mais potente)
-        'gemini-3-pro-preview'    # Tenta o experimental (se tudo falhar)
-    ]
+# --- 4. INTELIGÊNCIA ARTIFICIAL (TEXTO E IMAGEM) ---
+
+def gerar_conteudo_com_ia(texto_base, tipo_conteudo, pedir_imagem=False):
+    tentativas = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro']
     
     prompts = {
         "Post Instagram": """
@@ -96,8 +89,11 @@ def gerar_conteudo_com_ia(texto_base, tipo_conteudo):
     
     prompt_final = f"{prompts.get(tipo_conteudo)}\n\nTexto para analisar:\n{texto_base}"
     
-    log_erros = []
+    # Se o usuário pediu imagem, ensinamos o robô de texto a criar o roteiro da imagem
+    if pedir_imagem:
+        prompt_final += "\n\nIMPORTANTE: No final da sua resposta, pule duas linhas e escreva EXATAMENTE 'PROMPT_VISUAL:' seguido de uma descrição rica, em inglês, detalhando como seria uma imagem perfeita, realista e criativa para ilustrar esse conteúdo."
 
+    log_erros = []
     for modelo_nome in tentativas:
         try:
             model = genai.GenerativeModel(modelo_nome)
@@ -107,9 +103,31 @@ def gerar_conteudo_com_ia(texto_base, tipo_conteudo):
             log_erros.append(f"Erro {modelo_nome}: {str(e)}")
             continue 
 
-    # Se chegar aqui, falhou em todos
     return f"❌ Falha Total na IA.\nLog de erros:\n" + "\n".join(log_erros)
 
+def gerar_imagem_com_ia(prompt_visual):
+    """Pega a descrição gerada e pede pro modelo de Imagem desenhar"""
+    # Modelos de imagem que apareceram liberados na sua conta
+    modelos_imagem = ['models/gemini-2.0-flash-exp-image-generation', 'models/gemini-3-pro-image-preview', 'imagen-3.0-generate-001']
+    
+    log_erros = []
+    for modelo in modelos_imagem:
+        try:
+            # Invoca o pintor digital
+            img_model = genai.ImageGenerationModel(modelo)
+            resposta = img_model.generate_images(
+                prompt=prompt_visual,
+                number_of_images=1
+            )
+            # Retorna a foto gerada
+            return resposta.images[0].image
+        except Exception as e:
+            log_erros.append(str(e))
+            continue
+            
+    return f"Erro ao gerar imagem: {log_erros}"
+
+# --- 5. O MOTOR DO GOOGLE DRIVE (OCR) ---
 def ocr_pelo_google(service, arquivo, folder_id):
     try:
         meta = {'name': "temp_ocr_gemini", 'mimeType': 'application/vnd.google-apps.document', 'parents': [folder_id]}
@@ -125,7 +143,7 @@ def ocr_pelo_google(service, arquivo, folder_id):
         st.error(f"Erro no OCR: {e}")
         return None
 
-# --- 4. INTERFACE PRINCIPAL ---
+# --- 6. INTERFACE PRINCIPAL (TELA) ---
 
 st.title("🏔️ Gestor Inteligente")
 
@@ -141,28 +159,61 @@ if not service:
 else:
     tab_conteudo, tab_arquivo = st.tabs(["✨ Criar Conteúdo (IA)", "📂 Arquivos"])
 
-    # ABA 1: FÁBRICA DE CONTEÚDO
     with tab_conteudo:
         st.info(f"Usando motor de IA avançado (Série 2.5/3.0)")
+        
         upload = st.file_uploader("Arquivo (Foto/PDF)", type=["png","jpg","jpeg","pdf"], key="up_ia")
         tipo = st.selectbox("O que você quer?", ["Post Instagram", "Resumo Simples", "Extrair Dados"])
         
+        # O novo botão de escolher se quer imagem
+        quer_imagem = st.checkbox("🎨 Gerar Imagem Ilustrativa Exclusiva (IA)", value=False)
+        
         if upload and st.button("Gerar Mágica ✨"):
-            with st.spinner("1/2 Enviando para Google Drive (OCR)..."):
+            with st.spinner("1/3 Enviando para Google Drive (OCR)..."):
                 pdf = ocr_pelo_google(service, upload, FOLDER_ID_RAIZ)
             
             if pdf:
-                with st.spinner("2/2 A Inteligência Artificial está pensando..."):
+                with st.spinner("2/3 Lendo documento e escrevendo o texto..."):
                     texto = extrair_texto_do_pdf(pdf)
-                    res = gerar_conteudo_com_ia(texto, tipo)
+                    res_completa = gerar_conteudo_com_ia(texto, tipo, pedir_imagem=quer_imagem)
                     
-                    st.success("Processo Finalizado!")
-                    st.markdown("### 📝 Resultado Gerado:")
-                    st.markdown(res)
+                    # Vamos separar o que é o Post e o que é o Prompt da Imagem
+                    texto_post = res_completa
+                    prompt_visual = ""
                     
-                    with st.expander("Ver texto original lido"):
-                        st.text(texto)
+                    if "PROMPT_VISUAL:" in res_completa:
+                        partes = res_completa.split("PROMPT_VISUAL:")
+                        texto_post = partes[0].strip()
+                        prompt_visual = partes[1].strip()
+                
+                st.success("Processo Finalizado!")
+                
+                col1, col2 = st.columns([1, 1])
+                
+                with col1:
+                    st.markdown("### 📝 Texto Gerado:")
+                    st.write(texto_post)
+                
+                with col2:
+                    # Se o usuário marcou a caixa e a IA gerou o roteiro visual
+                    if quer_imagem and prompt_visual:
+                        with st.spinner("3/3 Desenhando a imagem exclusiva..."):
+                            imagem = gerar_imagem_com_ia(prompt_visual)
+                            
+                            st.markdown("### 🖼️ Sua Imagem:")
+                            if isinstance(imagem, str) and "Erro" in imagem:
+                                st.error(imagem)
+                            else:
+                                st.image(imagem, caption="Imagem criada sob medida para o seu texto.")
+                                # Mostra o que a IA pensou pra desenhar
+                                with st.expander("Ver roteiro da imagem"):
+                                    st.caption(prompt_visual)
+                    elif quer_imagem:
+                         st.warning("A IA falhou em criar o roteiro visual desta vez.")
+                
+                st.write("---")
+                with st.expander("🔍 Ver texto original lido (OCR)"):
+                    st.text(texto)
 
-    # ABA 2: ARQUIVO
     with tab_arquivo:
         st.write("Seus arquivos organizados.")
