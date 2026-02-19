@@ -1,15 +1,14 @@
 import streamlit as st
 import io
 import unicodedata
-import requests # <-- NOVA BIBLIOTECA ADICIONADA AQUI
+import requests
+import time
 from pypdf import PdfReader
 from google.oauth2.credentials import Credentials 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-# --- AS DUAS BIBLIOTECAS NOVAS QUE VAMOS USAR ---
 from google import genai
-from google.genai import types
 from PIL import Image
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
@@ -49,12 +48,11 @@ except Exception as e:
     st.error("❌ Erro: Não encontrei a 'gemini_api_key' nos secrets.")
     client = None
 
-# Nova configuração para a Hugging Face
 try:
     HF_TOKEN = st.secrets["hf_token"]
 except Exception as e:
-    # Fallback caso você queira testar localmente antes de colocar no secrets
-    HF_TOKEN = "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" 
+    HF_TOKEN = None
+    st.warning("⚠️ Token da Hugging Face não encontrado nos secrets.")
 
 # --- 2. CONFIGURAÇÃO DO GOOGLE DRIVE ---
 def get_drive_service():
@@ -120,23 +118,35 @@ def gerar_conteudo_com_ia(texto_base, tipo_conteudo, pedir_imagem=False):
     return f"❌ Falha Total na IA.\nLog de erros:\n" + "\n".join(log_erros)
 
 def gerar_imagem_com_ia(prompt_visual):
-    """Gera imagens usando a API gratuita da Hugging Face (Stable Diffusion XL)"""
-    API_URL = "https://router.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
+    """Gera imagens usando um modelo público e estável na Hugging Face"""
+    
+    # Este modelo é público e raramente dá erro de 'Not Found'
+    API_URL = "https://api-inference.huggingface.co/models/prompthero/openjourney"
+    
+    if not HF_TOKEN:
+        return "❌ Erro: O token da Hugging Face não foi configurado nos secrets."
+        
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
     payload = {"inputs": prompt_visual}
     
     try:
         response = requests.post(API_URL, headers=headers, json=payload)
         
+        # O erro 503 significa que o modelo está sendo carregado no servidor deles
+        if response.status_code == 503:
+            with st.status("☕ A IA está acordando... aguarde um instante.", expanded=False):
+                time.sleep(15) # Espera um pouco mais
+                response = requests.post(API_URL, headers=headers, json=payload)
+
         if response.status_code == 200:
             image_bytes = response.content
             imagem_pronta = Image.open(io.BytesIO(image_bytes))
             return imagem_pronta
         else:
-            return f"❌ Erro na API Hugging Face: {response.text}"
+            return f"❌ Erro na API Hugging Face ({response.status_code}): {response.text}"
             
     except Exception as e:
-        return f"❌ Erro de conexão ao tentar desenhar a imagem: {str(e)}"
+        return f"❌ Erro inesperado: {str(e)}"
 
 # --- 5. O MOTOR DO GOOGLE DRIVE (OCR) ---
 def ocr_pelo_google(service, arquivo, folder_id):
@@ -223,3 +233,4 @@ else:
 
     with tab_arquivo:
         st.write("Seus arquivos organizados.")
+
