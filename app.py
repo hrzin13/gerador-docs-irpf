@@ -112,12 +112,12 @@ def gerar_conteudo_com_ia(texto_base, tipo_conteudo, pedir_imagem=False):
     return f"❌ Falha Total na IA.\nLog de erros:\n" + "\n".join(log_erros)
 
 def gerar_imagem_com_ia(prompt_visual):
-    """Tenta os modelos de imagem mais modernos da sua conta"""
-    # Esses são os modelos visuais que apareceram na sua lista da série 2.5 e 3.0
+    """Tenta os modelos de imagem da família Imagen 4.0 (Os mais potentes)"""
+    # Usando os modelos exatos que o seu app listou como ativos!
     modelos_imagem = [
-        'gemini-2.5-flash-image', 
-        'gemini-3-pro-image-preview', 
-        'gemini-2.0-flash-exp-image-generation'
+        'imagen-4.0-fast-generate-001', 
+        'imagen-4.0-generate-001',
+        'imagen-4.0-ultra-generate-001'
     ]
     
     log_erros = []
@@ -139,15 +139,8 @@ def gerar_imagem_com_ia(prompt_visual):
             except Exception as e:
                 log_erros.append(f"[{modelo}]: {str(e)}")
                 continue
-        
-        # Se todos falharem, ele vai listar na tela quais modelos de imagem você tem
-        try:
-            modelos_ativos = [m.name for m in client.models.list() if 'image' in m.name.lower()]
-            return f"❌ Erro ao desenhar.\nModelos de imagem ativos na sua conta: {modelos_ativos}\n\nDetalhes do erro:\n" + "\n".join(log_erros)
-        except:
-            pass
             
-    return f"Erro ao gerar imagem:\n" + "\n".join(log_erros)
+    return f"❌ Erro ao desenhar com Imagen 4.0:\n" + "\n".join(log_erros)
 
 # --- 5. O MOTOR DO GOOGLE DRIVE (OCR) ---
 def ocr_pelo_google(service, arquivo, folder_id):
@@ -181,7 +174,7 @@ else:
     tab_conteudo, tab_arquivo = st.tabs(["✨ Criar Conteúdo (IA)", "📂 Arquivos"])
 
     with tab_conteudo:
-        st.info("Usando motor de IA avançado (Série 2.5/3.0 e Imagem)")
+        st.info("Usando motor de IA avançado (Série 2.5/3.0 e Imagen 4.0)")
         
         upload = st.file_uploader("Arquivo (Foto/PDF)", type=["png","jpg","jpeg","pdf"], key="up_ia")
         tipo = st.selectbox("O que você quer?", ["Post Instagram", "Resumo Simples", "Extrair Dados"])
