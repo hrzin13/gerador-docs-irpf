@@ -43,7 +43,6 @@ configurar_visual_montanha()
 # --- 1. CONFIGURAÇÃO DA IA (NOVO SDK) ---
 try:
     API_KEY = st.secrets["gemini_api_key"]
-    # Inicializa o cliente do NOVO padrão do Google
     client = genai.Client(api_key=API_KEY)
 except Exception as e:
     st.error("❌ Erro: Não encontrei a 'gemini_api_key' nos secrets.")
@@ -78,7 +77,7 @@ def extrair_texto_do_pdf(pdf_bytes):
     except:
         return ""
 
-# --- 4. INTELIGÊNCIA ARTIFICIAL (TEXTO E IMAGEM - NOVO PADRÃO) ---
+# --- 4. INTELIGÊNCIA ARTIFICIAL (TEXTO E IMAGEM) ---
 def gerar_conteudo_com_ia(texto_base, tipo_conteudo, pedir_imagem=False):
     tentativas = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro']
     
@@ -95,13 +94,12 @@ def gerar_conteudo_com_ia(texto_base, tipo_conteudo, pedir_imagem=False):
     prompt_final = f"{prompts.get(tipo_conteudo)}\n\nTexto para analisar:\n{texto_base}"
     
     if pedir_imagem:
-        prompt_final += "\n\nIMPORTANTE: No final da sua resposta, pule duas linhas e escreva EXATAMENTE 'PROMPT_VISUAL:' seguido de uma descrição rica, em inglês, detalhando como seria uma imagem perfeita, realista e criativa para ilustrar esse conteúdo."
+        prompt_final += "\n\nIMPORTANTE: No final da sua resposta, pule duas linhas e escreva EXATAMENTE 'PROMPT_VISUAL:' seguido de uma descrição curta (máximo 2 frases) em inglês, detalhando como seria uma imagem criativa e sem texto escrito para ilustrar esse post."
 
     log_erros = []
     if client:
         for modelo_nome in tentativas:
             try:
-                # O comando mudou na nova biblioteca
                 response = client.models.generate_content(
                     model=modelo_nome,
                     contents=prompt_final
@@ -114,30 +112,40 @@ def gerar_conteudo_com_ia(texto_base, tipo_conteudo, pedir_imagem=False):
     return f"❌ Falha Total na IA.\nLog de erros:\n" + "\n".join(log_erros)
 
 def gerar_imagem_com_ia(prompt_visual):
-    """Pega a descrição gerada e pede pro modelo de Imagem desenhar"""
-    modelos_imagem = ['imagen-3.0-generate-001', 'gemini-2.0-flash-exp-image-generation']
+    """Tenta os modelos de imagem mais modernos da sua conta"""
+    # Esses são os modelos visuais que apareceram na sua lista da série 2.5 e 3.0
+    modelos_imagem = [
+        'gemini-2.5-flash-image', 
+        'gemini-3-pro-image-preview', 
+        'gemini-2.0-flash-exp-image-generation'
+    ]
     
     log_erros = []
     if client:
         for modelo in modelos_imagem:
             try:
-                # O comando correto da nova biblioteca
                 result = client.models.generate_images(
                     model=modelo,
                     prompt=prompt_visual,
                     config=types.GenerateImagesConfig(
                         number_of_images=1,
-                        aspect_ratio="1:1" # Imagem quadrada pro Insta
+                        aspect_ratio="1:1"
                     )
                 )
                 
-                # Transforma a resposta do Google em uma imagem de verdade para o Streamlit
                 imagem_pronta = Image.open(io.BytesIO(result.generated_images[0].image.image_bytes))
                 return imagem_pronta
                 
             except Exception as e:
-                log_erros.append(f"Erro {modelo}: {str(e)}")
+                log_erros.append(f"[{modelo}]: {str(e)}")
                 continue
+        
+        # Se todos falharem, ele vai listar na tela quais modelos de imagem você tem
+        try:
+            modelos_ativos = [m.name for m in client.models.list() if 'image' in m.name.lower()]
+            return f"❌ Erro ao desenhar.\nModelos de imagem ativos na sua conta: {modelos_ativos}\n\nDetalhes do erro:\n" + "\n".join(log_erros)
+        except:
+            pass
             
     return f"Erro ao gerar imagem:\n" + "\n".join(log_erros)
 
@@ -173,7 +181,7 @@ else:
     tab_conteudo, tab_arquivo = st.tabs(["✨ Criar Conteúdo (IA)", "📂 Arquivos"])
 
     with tab_conteudo:
-        st.info("Usando motor de IA avançado (Série 2.5/3.0 e Imagen)")
+        st.info("Usando motor de IA avançado (Série 2.5/3.0 e Imagem)")
         
         upload = st.file_uploader("Arquivo (Foto/PDF)", type=["png","jpg","jpeg","pdf"], key="up_ia")
         tipo = st.selectbox("O que você quer?", ["Post Instagram", "Resumo Simples", "Extrair Dados"])
@@ -192,7 +200,6 @@ else:
                     texto_post = res_completa
                     prompt_visual = ""
                     
-                    # Separa o que é o Post do que é a instrução da Imagem
                     if "PROMPT_VISUAL:" in res_completa:
                         partes = res_completa.split("PROMPT_VISUAL:")
                         texto_post = partes[0].strip()
@@ -212,12 +219,11 @@ else:
                             imagem = gerar_imagem_com_ia(prompt_visual)
                             
                             st.markdown("### 🖼️ Sua Imagem:")
-                            # Se a variável imagem for uma string, significa que deu erro
                             if isinstance(imagem, str):
                                 st.error(imagem)
                             else:
                                 st.image(imagem, caption="Imagem criada sob medida para o seu texto.")
-                                with st.expander("Ver roteiro da imagem"):
+                                with st.expander("Ver roteiro da imagem (Prompt)"):
                                     st.caption(prompt_visual)
                     elif quer_imagem:
                          st.warning("A IA falhou em criar o roteiro visual desta vez.")
