@@ -5,7 +5,11 @@ from pypdf import PdfReader
 from google.oauth2.credentials import Credentials 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
-import google.generativeai as genai
+
+# --- AS DUAS BIBLIOTECAS NOVAS QUE VAMOS USAR ---
+from google import genai
+from google.genai import types
+from PIL import Image
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Gestor Inteligente & Criativo", layout="wide", page_icon="🏔️")
@@ -36,12 +40,14 @@ def configurar_visual_montanha():
 
 configurar_visual_montanha()
 
-# --- 1. CONFIGURAÇÃO DA IA (GEMINI) ---
+# --- 1. CONFIGURAÇÃO DA IA (NOVO SDK) ---
 try:
     API_KEY = st.secrets["gemini_api_key"]
-    genai.configure(api_key=API_KEY)
+    # Inicializa o cliente do NOVO padrão do Google
+    client = genai.Client(api_key=API_KEY)
 except Exception as e:
     st.error("❌ Erro: Não encontrei a 'gemini_api_key' nos secrets.")
+    client = None
 
 # --- 2. CONFIGURAÇÃO DO GOOGLE DRIVE ---
 def get_drive_service():
@@ -72,8 +78,7 @@ def extrair_texto_do_pdf(pdf_bytes):
     except:
         return ""
 
-# --- 4. INTELIGÊNCIA ARTIFICIAL (TEXTO E IMAGEM) ---
-
+# --- 4. INTELIGÊNCIA ARTIFICIAL (TEXTO E IMAGEM - NOVO PADRÃO) ---
 def gerar_conteudo_com_ia(texto_base, tipo_conteudo, pedir_imagem=False):
     tentativas = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro']
     
@@ -89,43 +94,52 @@ def gerar_conteudo_com_ia(texto_base, tipo_conteudo, pedir_imagem=False):
     
     prompt_final = f"{prompts.get(tipo_conteudo)}\n\nTexto para analisar:\n{texto_base}"
     
-    # Se o usuário pediu imagem, ensinamos o robô de texto a criar o roteiro da imagem
     if pedir_imagem:
         prompt_final += "\n\nIMPORTANTE: No final da sua resposta, pule duas linhas e escreva EXATAMENTE 'PROMPT_VISUAL:' seguido de uma descrição rica, em inglês, detalhando como seria uma imagem perfeita, realista e criativa para ilustrar esse conteúdo."
 
     log_erros = []
-    for modelo_nome in tentativas:
-        try:
-            model = genai.GenerativeModel(modelo_nome)
-            response = model.generate_content(prompt_final)
-            return response.text
-        except Exception as e:
-            log_erros.append(f"Erro {modelo_nome}: {str(e)}")
-            continue 
+    if client:
+        for modelo_nome in tentativas:
+            try:
+                # O comando mudou na nova biblioteca
+                response = client.models.generate_content(
+                    model=modelo_nome,
+                    contents=prompt_final
+                )
+                return response.text
+            except Exception as e:
+                log_erros.append(f"Erro {modelo_nome}: {str(e)}")
+                continue 
 
     return f"❌ Falha Total na IA.\nLog de erros:\n" + "\n".join(log_erros)
 
 def gerar_imagem_com_ia(prompt_visual):
     """Pega a descrição gerada e pede pro modelo de Imagem desenhar"""
-    # Modelos de imagem que apareceram liberados na sua conta
-    modelos_imagem = ['models/gemini-2.0-flash-exp-image-generation', 'models/gemini-3-pro-image-preview', 'imagen-3.0-generate-001']
+    modelos_imagem = ['imagen-3.0-generate-001', 'gemini-2.0-flash-exp-image-generation']
     
     log_erros = []
-    for modelo in modelos_imagem:
-        try:
-            # Invoca o pintor digital
-            img_model = genai.ImageGenerationModel(modelo)
-            resposta = img_model.generate_images(
-                prompt=prompt_visual,
-                number_of_images=1
-            )
-            # Retorna a foto gerada
-            return resposta.images[0].image
-        except Exception as e:
-            log_erros.append(str(e))
-            continue
+    if client:
+        for modelo in modelos_imagem:
+            try:
+                # O comando correto da nova biblioteca
+                result = client.models.generate_images(
+                    model=modelo,
+                    prompt=prompt_visual,
+                    config=types.GenerateImagesConfig(
+                        number_of_images=1,
+                        aspect_ratio="1:1" # Imagem quadrada pro Insta
+                    )
+                )
+                
+                # Transforma a resposta do Google em uma imagem de verdade para o Streamlit
+                imagem_pronta = Image.open(io.BytesIO(result.generated_images[0].image.image_bytes))
+                return imagem_pronta
+                
+            except Exception as e:
+                log_erros.append(f"Erro {modelo}: {str(e)}")
+                continue
             
-    return f"Erro ao gerar imagem: {log_erros}"
+    return f"Erro ao gerar imagem:\n" + "\n".join(log_erros)
 
 # --- 5. O MOTOR DO GOOGLE DRIVE (OCR) ---
 def ocr_pelo_google(service, arquivo, folder_id):
@@ -144,7 +158,6 @@ def ocr_pelo_google(service, arquivo, folder_id):
         return None
 
 # --- 6. INTERFACE PRINCIPAL (TELA) ---
-
 st.title("🏔️ Gestor Inteligente")
 
 service = get_drive_service()
@@ -160,12 +173,11 @@ else:
     tab_conteudo, tab_arquivo = st.tabs(["✨ Criar Conteúdo (IA)", "📂 Arquivos"])
 
     with tab_conteudo:
-        st.info(f"Usando motor de IA avançado (Série 2.5/3.0)")
+        st.info("Usando motor de IA avançado (Série 2.5/3.0 e Imagen)")
         
         upload = st.file_uploader("Arquivo (Foto/PDF)", type=["png","jpg","jpeg","pdf"], key="up_ia")
         tipo = st.selectbox("O que você quer?", ["Post Instagram", "Resumo Simples", "Extrair Dados"])
         
-        # O novo botão de escolher se quer imagem
         quer_imagem = st.checkbox("🎨 Gerar Imagem Ilustrativa Exclusiva (IA)", value=False)
         
         if upload and st.button("Gerar Mágica ✨"):
@@ -177,10 +189,10 @@ else:
                     texto = extrair_texto_do_pdf(pdf)
                     res_completa = gerar_conteudo_com_ia(texto, tipo, pedir_imagem=quer_imagem)
                     
-                    # Vamos separar o que é o Post e o que é o Prompt da Imagem
                     texto_post = res_completa
                     prompt_visual = ""
                     
+                    # Separa o que é o Post do que é a instrução da Imagem
                     if "PROMPT_VISUAL:" in res_completa:
                         partes = res_completa.split("PROMPT_VISUAL:")
                         texto_post = partes[0].strip()
@@ -195,17 +207,16 @@ else:
                     st.write(texto_post)
                 
                 with col2:
-                    # Se o usuário marcou a caixa e a IA gerou o roteiro visual
                     if quer_imagem and prompt_visual:
                         with st.spinner("3/3 Desenhando a imagem exclusiva..."):
                             imagem = gerar_imagem_com_ia(prompt_visual)
                             
                             st.markdown("### 🖼️ Sua Imagem:")
-                            if isinstance(imagem, str) and "Erro" in imagem:
+                            # Se a variável imagem for uma string, significa que deu erro
+                            if isinstance(imagem, str):
                                 st.error(imagem)
                             else:
                                 st.image(imagem, caption="Imagem criada sob medida para o seu texto.")
-                                # Mostra o que a IA pensou pra desenhar
                                 with st.expander("Ver roteiro da imagem"):
                                     st.caption(prompt_visual)
                     elif quer_imagem:
