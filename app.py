@@ -121,7 +121,7 @@ def gerar_conteudo_com_ia(texto_base, tipo_conteudo, pedir_imagem=False):
 
 def gerar_imagem_com_ia(prompt_visual):
     """Gera imagens usando a API gratuita da Hugging Face (Stable Diffusion XL)"""
-    API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
+    API_URL = "https://router.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
     headers = {"Authorization": f"Bearer {HF_TOKEN}"}
     payload = {"inputs": prompt_visual}
     
