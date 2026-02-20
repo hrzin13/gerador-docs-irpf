@@ -233,4 +233,3 @@ else:
 
     with tab_arquivo:
         st.write("Seus arquivos organizados.")
-
