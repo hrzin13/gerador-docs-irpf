@@ -126,7 +126,7 @@ def gerar_imagem_com_ia(prompt_visual):
     """Gera imagens usando o modelo oficial mais estável da Hugging Face"""
     
     # URL corrigida para o modelo super estável da RunwayML
-    API_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5"
+    API_URL = "https://router.huggingface.co/models/runwayml/stable-diffusion-v1-5"
     
     if not HF_TOKEN:
         return "❌ Erro: O token da Hugging Face não foi configurado nos secrets."
