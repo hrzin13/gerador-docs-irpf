@@ -121,7 +121,7 @@ def gerar_imagem_com_ia(prompt_visual):
     """Gera imagens usando um modelo público e estável na Hugging Face"""
     
     # Este modelo é público e raramente dá erro de 'Not Found'
-    API_URL = "https://api-inference.huggingface.co/models/prompthero/openjourney"
+    API_URL = "https://https://router.huggingface.co/models/prompthero/openjourney"
     
     if not HF_TOKEN:
         return "❌ Erro: O token da Hugging Face não foi configurado nos secrets."
