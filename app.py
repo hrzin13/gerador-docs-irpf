@@ -3,6 +3,7 @@ import io
 import unicodedata
 import requests
 import time
+import socket # <-- Biblioteca adicionada para controlar o tempo da internet
 from pypdf import PdfReader
 from google.oauth2.credentials import Credentials 
 from googleapiclient.discovery import build
@@ -10,6 +11,10 @@ from googleapiclient.http import MediaIoBaseUpload
 
 from google import genai
 from PIL import Image
+
+# --- BLINDAGEM CONTRA TIMEOUT ---
+# Dá até 2 minutos para o Google Drive processar arquivos grandes sem cortar a conexão
+socket.setdefaulttimeout(120) 
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Gestor Inteligente & Criativo", layout="wide", page_icon="🏔️")
@@ -120,7 +125,7 @@ def gerar_conteudo_com_ia(texto_base, tipo_conteudo, pedir_imagem=False):
 def gerar_imagem_com_ia(prompt_visual):
     """Gera imagens usando o modelo oficial mais estável da Hugging Face"""
     
-    # URL corrigida e modelo extremamente estável
+    # URL corrigida para o modelo super estável da RunwayML
     API_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5"
     
     if not HF_TOKEN:
@@ -135,10 +140,10 @@ def gerar_imagem_com_ia(prompt_visual):
     try:
         response = requests.post(API_URL, headers=headers, json=payload)
         
-        # O erro 503 significa que o modelo está a ser carregado no servidor deles
+        # O erro 503 significa que o modelo está sendo carregado no servidor deles
         if response.status_code == 503:
-            with st.status("☕ A IA está a acordar... aguarde um instante.", expanded=False):
-                time.sleep(15) # Espera um pouco mais
+            with st.status("☕ A IA está acordando... aguarde um instante.", expanded=False):
+                time.sleep(15) 
                 response = requests.post(API_URL, headers=headers, json=payload)
 
         if response.status_code == 200:
@@ -156,18 +161,20 @@ def ocr_pelo_google(service, arquivo, folder_id):
     try:
         meta = {'name': "temp_ocr_gemini", 'mimeType': 'application/vnd.google-apps.document', 'parents': [folder_id]}
         media = MediaIoBaseUpload(arquivo, mimetype=arquivo.type, resumable=True)
-        file_doc = service.files().create(body=meta, media_body=media, fields='id').execute()
+        
+        # Adicionado num_retries=3 para o Google tentar de novo em caso de falha na rede
+        file_doc = service.files().create(body=meta, media_body=media, fields='id').execute(num_retries=3)
         file_id = file_doc.get('id')
         
-        pdf_content = service.files().export(fileId=file_id, mimeType='application/pdf').execute()
-        service.files().delete(fileId=file_id).execute()
+        pdf_content = service.files().export(fileId=file_id, mimeType='application/pdf').execute(num_retries=3)
+        service.files().delete(fileId=file_id).execute(num_retries=3)
         
         return io.BytesIO(pdf_content)
     except Exception as e:
         st.error(f"Erro no OCR: {e}")
         return None
 
-# --- 6. INTERFACE PRINCIPAL (ECRÃ) ---
+# --- 6. INTERFACE PRINCIPAL (TELA) ---
 st.title("🏔️ Gestor Inteligente")
 
 service = get_drive_service()
