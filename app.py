@@ -1,9 +1,17 @@
+import streamlit as st
+import streamlit.components.v1 as components
+
+# Configuração básica da página no Streamlit
+st.set_page_config(page_title="Surpresa", page_icon="❤️", layout="centered")
+
+# Todo o código HTML/CSS guardado como um texto (string)
+html_surpresa = """
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Para Minha Namorada ❤️</title>
+    <title>Para Minha Futura Namorada ❤️</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700&display=swap');
         
@@ -15,6 +23,7 @@
             align-items: center;
             height: 100vh;
             margin: 0;
+            overflow: hidden; /* Evita barras de rolagem duplas */
         }
         .cartao {
             background-color: white;
@@ -57,8 +66,11 @@
     <div class="cartao">
         <img src="https://upload.wikimedia.org/wikipedia/en/0/05/Hello_kitty_character_portrait.png" alt="Hello Kitty" class="imagem-hello-kitty">
         <h1>Para a mulher mais linda!</h1>
-        <p>Você é ainda mais perfeita e fofa que a Hello Kitty. Fiz essa página especialmente para te arrancar um sorriso hoje! <span class="coracao">❤️</span></p>
+        <p>Você é ainda mais perfeita e fofa que a Hello Kitty. Fiz essa página especialmente para te arrancar um sorriso hoje, minha futura namorada! <span class="coracao">❤️</span></p>
     </div>
 </body>
 </html>
+"""
 
+# Renderiza o HTML no Streamlit com uma altura fixa para caber na tela do celular
+components.html(html_surpresa, height=700)
