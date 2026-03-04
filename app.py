@@ -1,47 +1,42 @@
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageDraw
+import io
 
 # Configuração da página
 st.set_page_config(page_title="Gráfico de Crochê", layout="centered")
 
-st.title("🧶 Gerador de Gráfico: Porta Bic")
-st.write("Transforme imagens em um tabuleiro quadriculado para crochê.")
+st.title("🧶 Gerador de Gráfico Pro")
+st.write("Crie seu tabuleiro, ajuste o formato e baixe em alta resolução para imprimir.")
 
-# 1. Interface para anexar a imagem
+# 1. Interface
 imagem_carregada = st.file_uploader("Anexe o seu desenho aqui (png, jpg)", type=["png", "jpg", "jpeg"])
 
-st.write("### Ajustes do Gráfico")
+st.write("### Ajustes do Projeto")
+tipo_peca = st.radio("Como você vai tecer essa peça?", 
+                     ["Circular (Tubo - Ex: Porta Bic, Touca)", 
+                      "Plana (Ida e Volta - Ex: Tapete, Blusa)"])
+
 col1, col2 = st.columns(2)
 with col1:
-    largura_pontos = st.number_input("Largura (Pontos)", min_value=5, max_value=50, value=20)
+    largura_pontos = st.number_input("Largura (Pontos)", min_value=5, value=20)
 with col2:
-    altura_carreiras = st.number_input("Altura (Carreiras)", min_value=5, max_value=50, value=20)
+    altura_carreiras = st.number_input("Altura (Carreiras)", min_value=5, value=20)
 
-# NOVO: Filtro para evitar que a foto tenha 50 cores diferentes
 st.write("### Simplificar Cores")
-num_cores = st.slider("Quantas cores de linha você vai usar?", min_value=2, max_value=10, value=3)
+num_cores = st.slider("Quantas cores de linha vai usar?", min_value=2, max_value=20, value=3)
 
 # O Botão Mágico
-if st.button("Gerar Tabuleiro", type="primary"):
+if st.button("Gerar Tabuleiro e Baixar", type="primary"):
     if imagem_carregada is not None:
         try:
-            # Abre a imagem
+            # --- PROCESSAMENTO DA IMAGEM ---
             img = Image.open(imagem_carregada).convert('RGB')
-            
-            # Força a imagem a ter apenas a quantidade de cores que você escolheu no slider
             img = img.quantize(colors=num_cores).convert('RGB')
-            
-            # Redimensiona para formar a grade do crochê
             img = img.resize((largura_pontos, altura_carreiras), Image.Resampling.NEAREST)
-            
-            st.image(img, caption="Prévia do desenho simplificado", width=200)
-
             pixels = img.load()
             
-            # Identifica quais são as cores finais
             cores_encontradas = {}
             contador_cores = 1
-            
             for y in range(altura_carreiras):
                 for x in range(largura_pontos):
                     rgb = pixels[x, y]
@@ -49,37 +44,79 @@ if st.button("Gerar Tabuleiro", type="primary"):
                         cores_encontradas[rgb] = contador_cores
                         contador_cores += 1
 
-            st.divider()
-            st.subheader("🏁 Seu Tabuleiro de Crochê")
-            st.write("Leia de baixo para cima (A carreira 1 é a base do isqueiro).")
+            # --- GERAÇÃO DA IMAGEM EM ALTA RESOLUÇÃO PARA DOWNLOAD ---
+            tamanho_quadrado = 40 # Pixels por ponto (garante alta qualidade no zoom)
+            largura_img = largura_pontos * tamanho_quadrado
+            altura_img = altura_carreiras * tamanho_quadrado
             
-            # CONSTRÓI O TABULEIRO VISUAL (HTML/CSS)
-            html_grid = "<div style='display: flex; flex-direction: column; gap: 2px; overflow-x: auto; padding-bottom: 10px;'>"
+            # Cria uma tela em branco
+            img_download = Image.new('RGB', (largura_img, altura_img), color='white')
+            draw = ImageDraw.Draw(img_download)
+            
+            html_grid = "<div style='display: flex; flex-direction: column; gap: 1px; overflow-x: auto; padding-bottom: 10px;'>"
             
             for y in range(altura_carreiras):
-                html_grid += "<div style='display: flex; gap: 2px; min-width: max-content;'>"
+                html_grid += "<div style='display: flex; gap: 1px; min-width: max-content;'>"
+                
+                # Lógica para mostrar a direção da leitura (Ida e Volta)
+                numero_carreira = altura_carreiras - y
+                direcao = "➔" 
+                if "Plana" in tipo_peca and numero_carreira % 2 == 0:
+                    direcao = "⬅️" # Carreiras pares na peça plana são lidas ao contrário
+                
+                html_grid += f"<div style='width: 50px; text-align: right; font-size: 12px; margin-right: 5px; color: #888;'>C {numero_carreira} {direcao}</div>"
+                
                 for x in range(largura_pontos):
                     rgb = pixels[x, y]
                     num_cor = cores_encontradas[rgb]
-                    
                     hex_color = '#{:02x}{:02x}{:02x}'.format(rgb[0], rgb[1], rgb[2])
                     
-                    # Calcula o brilho da cor para decidir se o número dentro fica preto ou branco (para dar pra ler)
                     brilho = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000
                     cor_texto = "black" if brilho > 128 else "white"
                     
-                    # Desenha cada quadradinho
-                    cell = f"<div style='background-color: {hex_color}; color: {cor_texto}; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; border-radius: 3px;'>{num_cor}</div>"
+                    # 1. Desenha no HTML (Celular)
+                    tamanho_tela = "25px" if largura_pontos <= 40 else "12px"
+                    fonte_tela = "12px" if largura_pontos <= 40 else "0px"
+                    cell = f"<div style='background-color: {hex_color}; color: {cor_texto}; width: {tamanho_tela}; height: {tamanho_tela}; display: flex; align-items: center; justify-content: center; font-size: {fonte_tela}; font-weight: bold; border-radius: 2px;'>{num_cor}</div>"
                     html_grid += cell
-                
-                # Adiciona o número da carreira na lateral direita
-                numero_carreira = altura_carreiras - y
-                html_grid += f"<div style='width: 40px; text-align: left; font-size: 12px; line-height: 25px; margin-left: 5px; color: #888;'>C {numero_carreira}</div>"
+                    
+                    # 2. Desenha na Imagem de Alta Resolução (Para Download)
+                    x0 = x * tamanho_quadrado
+                    y0 = y * tamanho_quadrado
+                    x1 = x0 + tamanho_quadrado
+                    y1 = y0 + tamanho_quadrado
+                    draw.rectangle([x0, y0, x1, y1], fill=rgb, outline="black")
+                    
+                    # Adiciona o número dentro do quadrado na imagem de download se não for gigante
+                    if largura_pontos <= 100: 
+                        draw.text((x0 + 15, y0 + 10), str(num_cor), fill=cor_texto)
+
                 html_grid += "</div>"
-            
             html_grid += "</div>"
             
-            # Renderiza o tabuleiro na tela do aplicativo
+            st.divider()
+            
+            # --- BOTÃO DE DOWNLOAD ---
+            buf = io.BytesIO()
+            img_download.save(buf, format="PNG")
+            byte_im = buf.getvalue()
+            
+            st.success("✅ Tabuleiro gerado com sucesso!")
+            st.download_button(
+                label="📥 Baixar Tabuleiro para Imprimir (PNG)",
+                data=byte_im,
+                file_name="meu_grafico_croche.png",
+                mime="image/png",
+                type="primary"
+            )
+            
+            # Mostra o tabuleiro na tela
+            st.write("### Visualização Rápida")
+            if "Plana" in tipo_peca:
+                st.info("💡 **Atenção:** Como é uma peça plana, siga as setas (➔ e ⬅️). Você lê uma carreira da esquerda pra direita, e a próxima da direita pra esquerda!")
+            else:
+                st.info("💡 **Atenção:** Como é uma peça circular (tubo), leia todas as carreiras na mesma direção (➔).")
+                
             st.markdown(html_grid, unsafe_allow_html=True)
 
             # Legenda
@@ -93,3 +130,4 @@ if st.button("Gerar Tabuleiro", type="primary"):
             st.error(f"Erro ao gerar o gráfico: {e}")
     else:
         st.warning("⚠️ Anexe a imagem primeiro!")
+
