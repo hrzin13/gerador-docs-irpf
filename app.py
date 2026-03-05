@@ -6,7 +6,7 @@ import io
 st.set_page_config(page_title="Gráfico de Crochê Pro", layout="centered")
 
 st.title("🧶 Gerador de Gráfico Pro")
-st.write("Crie seu tabuleiro, mantenha a proporção e calcule o tempo de produção.")
+st.write("Crie seu tabuleiro, calcule o tempo de produção e o custo exato.")
 
 # 1. Interface
 imagem_carregada = st.file_uploader("Anexe o seu desenho aqui (png, jpg)", type=["png", "jpg", "jpeg"])
@@ -39,20 +39,37 @@ else:
 st.write("### Simplificar Cores")
 num_cores = st.slider("Quantas cores de linha vai usar?", min_value=2, max_value=20, value=3)
 
-# --- CÁLCULO DE TEMPO E PONTOS ---
+# --- NOVO: MÓDULO FINANCEIRO OPCIONAL ---
+st.divider()
+st.write("### 💰 Cálculo de Custo (Opcional)")
+st.write("Preencha com os dados do novelo que você comprou para saber o custo real da peça.")
+col_c1, col_c2 = st.columns(2)
+with col_c1:
+    preco_novelo = st.number_input("Preço do Novelo (R$)", min_value=0.0, value=0.0, step=1.0)
+with col_c2:
+    metros_novelo = st.number_input("Metros no Novelo (m)", min_value=0.0, value=0.0, step=10.0)
+
+# --- MATEMÁTICA DE TEMPO, PONTOS E CUSTO ---
 total_pontos = largura_pontos * altura_carreiras
-# Estimativa de 20 pontos baixos por minuto (com troca de cor)
 minutos_totais = int(total_pontos / 20)
 horas = minutos_totais // 60
 minutos_restantes = minutos_totais % 60
 
+# Matemática do Custo: 1 ponto baixo gasta ~4,5 cm (0.045m)
+metros_gastos = total_pontos * 0.045
+custo_total = 0.0
+if preco_novelo > 0 and metros_novelo > 0:
+    custo_por_metro = preco_novelo / metros_novelo
+    custo_total = metros_gastos * custo_por_metro
+
 st.divider()
-st.subheader("⏱️ Previsão de Trabalho")
+st.subheader("📊 Previsão de Trabalho e Custo")
 st.write(f"**Total de pontos a tecer:** {total_pontos} pontos.")
-if horas > 0:
-    st.write(f"**Tempo estimado:** {horas} hora(s) e {minutos_restantes} minuto(s) de trabalho focado.")
-else:
-    st.write(f"**Tempo estimado:** {minutos_restantes} minutos de trabalho focado.")
+st.write(f"**Tempo estimado:** {horas}h e {minutos_restantes}min de trabalho focado.")
+
+if custo_total > 0:
+    st.write(f"**Linha gasta (estimativa):** {metros_gastos:.2f} metros.")
+    st.success(f"**Custo de material da peça:** R$ {custo_total:.2f}")
 
 # O Botão Mágico
 if st.button("Gerar Tabuleiro e Baixar", type="primary"):
@@ -62,7 +79,7 @@ if st.button("Gerar Tabuleiro e Baixar", type="primary"):
             img = img.quantize(colors=num_cores).convert('RGB')
             img = img.resize((largura_pontos, altura_carreiras), Image.Resampling.NEAREST)
             
-            st.image(img, caption=f"Prévia fiel da peça ({largura_pontos}x{altura_carreiras})", width=250)
+            st.image(img, caption=f"Prévia da peça ({largura_pontos}x{altura_carreiras})", width=250)
             
             pixels = img.load()
             cores_encontradas = {}
@@ -121,7 +138,6 @@ if st.button("Gerar Tabuleiro e Baixar", type="primary"):
             img_download.save(buf, format="PNG")
             byte_im = buf.getvalue()
             
-            st.success("✅ Tabuleiro gerado com sucesso!")
             st.download_button(
                 label="📥 Baixar Tabuleiro para Imprimir (PNG)",
                 data=byte_im,
