@@ -16,19 +16,49 @@ tipo_peca = st.radio("Como você vai tecer essa peça?",
                      ["Circular (Tubo - Ex: Porta Bic, Touca)", 
                       "Plana (Ida e Volta - Ex: Tapete, Blusa)"])
 
+# --- NOVA INTELIGÊNCIA DE TAMANHOS PRÉ-DEFINIDOS ---
 if imagem_carregada is not None:
     img_temp = Image.open(imagem_carregada)
     largura_original, altura_original = img_temp.size
     proporcao = altura_original / largura_original 
     
-    st.info(f"📐 Proporção original: {largura_original}x{altura_original}. A altura ideal será sugerida automaticamente!")
+    st.info(f"📐 Resolução original da imagem: {largura_original}x{altura_original}.")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        largura_pontos = st.number_input("Largura desejada (Pontos)", min_value=5, value=20)
-    with col2:
-        altura_calculada = max(5, int(largura_pontos * proporcao))
-        altura_carreiras = st.number_input("Altura (Carreiras) - Recomendada", min_value=5, value=altura_calculada)
+    opcao_tamanho = st.radio(
+        "Escolha o Nível de Detalhe (Resolução):",
+        ["🟢 Pequeno (Max 30 pontos - Rápido)",
+         "🟡 Médio (Max 60 pontos - Equilibrado)",
+         "🔴 Grande (Max 100 pontos - Demorado)",
+         "⚙️ Personalizado (Digitar medidas)"]
+    )
+
+    if "Pequeno" in opcao_tamanho:
+        max_dim = 30
+    elif "Médio" in opcao_tamanho:
+        max_dim = 60
+    elif "Grande" in opcao_tamanho:
+        max_dim = 100
+    else:
+        max_dim = None
+
+    if max_dim:
+        # Calcula o tamanho proporcional baseado no lado maior da foto
+        if largura_original > altura_original:
+            largura_pontos = max_dim
+            altura_carreiras = max(5, int(max_dim * proporcao))
+        else:
+            altura_carreiras = max_dim
+            largura_pontos = max(5, int(max_dim / proporcao))
+            
+        st.success(f"**Tamanho ajustado:** {largura_pontos} pontos de largura x {altura_carreiras} carreiras.")
+    else:
+        # Modo Personalizado livre
+        col1, col2 = st.columns(2)
+        with col1:
+            largura_pontos = st.number_input("Largura (Pontos)", min_value=5, value=20)
+        with col2:
+            altura_calculada = max(5, int(largura_pontos * proporcao))
+            altura_carreiras = st.number_input("Altura (Carreiras)", min_value=5, value=altura_calculada)
 else:
     col1, col2 = st.columns(2)
     with col1:
@@ -39,23 +69,21 @@ else:
 st.write("### Simplificar Cores")
 num_cores = st.slider("Quantas cores de linha vai usar?", min_value=2, max_value=20, value=3)
 
-# --- NOVO: MÓDULO FINANCEIRO OPCIONAL ---
+# --- MÓDULO FINANCEIRO OPCIONAL ---
 st.divider()
 st.write("### 💰 Cálculo de Custo (Opcional)")
-st.write("Preencha com os dados do novelo que você comprou para saber o custo real da peça.")
 col_c1, col_c2 = st.columns(2)
 with col_c1:
     preco_novelo = st.number_input("Preço do Novelo (R$)", min_value=0.0, value=0.0, step=1.0)
 with col_c2:
     metros_novelo = st.number_input("Metros no Novelo (m)", min_value=0.0, value=0.0, step=10.0)
 
-# --- MATEMÁTICA DE TEMPO, PONTOS E CUSTO ---
-total_pontos = largura_pontos * altura_carreiras
+# --- MATEMÁTICA DE TEMPO E CUSTO ---
+total_pontos = int(largura_pontos * altura_carreiras)
 minutos_totais = int(total_pontos / 20)
 horas = minutos_totais // 60
 minutos_restantes = minutos_totais % 60
 
-# Matemática do Custo: 1 ponto baixo gasta ~4,5 cm (0.045m)
 metros_gastos = total_pontos * 0.045
 custo_total = 0.0
 if preco_novelo > 0 and metros_novelo > 0:
@@ -69,7 +97,7 @@ st.write(f"**Tempo estimado:** {horas}h e {minutos_restantes}min de trabalho foc
 
 if custo_total > 0:
     st.write(f"**Linha gasta (estimativa):** {metros_gastos:.2f} metros.")
-    st.success(f"**Custo de material da peça:** R$ {custo_total:.2f}")
+    st.success(f"**Custo de material:** R$ {custo_total:.2f}")
 
 # O Botão Mágico
 if st.button("Gerar Tabuleiro e Baixar", type="primary"):
@@ -159,3 +187,4 @@ if st.button("Gerar Tabuleiro e Baixar", type="primary"):
             st.error(f"Erro ao gerar o gráfico: {e}")
     else:
         st.warning("⚠️ Anexe a imagem primeiro!")
+
