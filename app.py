@@ -1,63 +1,128 @@
-def calcular_preco_justo(pontos_totais, preco_novelo, metros_novelo, valor_hora, margem_lucro):
-    print("\n" + "="*40)
-    print("💰 CALCULADORA DE PRECIFICAÇÃO PRO")
-    print("="*40)
+import streamlit as st
+from PIL import Image, ImageDraw
+import io
 
-    # 1. Custo de Material (Custo Direto)
-    # Sabendo que 1 ponto baixo gasta em média 0.045 metros (4,5 cm)
-    metros_gastos = pontos_totais * 0.045
-    custo_por_metro = preco_novelo / metros_novelo
-    custo_material = metros_gastos * custo_por_metro
+st.set_page_config(page_title="Gráfico de Crochê Pro", layout="centered")
 
-    # 2. Custo da Mão de Obra
-    # Estimativa de 20 pontos por minuto (com troca de fio conduzido)
-    minutos_totais = pontos_totais / 20
-    horas_totais = minutos_totais / 60
-    custo_tempo = horas_totais * valor_hora
+st.title("🧶 Gerador de Gráfico Pro")
+st.write("Crie seu tabuleiro, calcule o tempo de produção e o custo exato.")
 
-    # 3. Taxa de Desgaste (Fixo)
-    # A agulha de bambu e a tesoura sofrem desgaste. 
-    # Adicionamos um valor simbólico de reserva para reposição de ferramentas.
-    taxa_desgaste = 1.50 
+imagem_carregada = st.file_uploader("Anexe o seu desenho aqui (png, jpg)", type=["png", "jpg", "jpeg"])
 
-    # 4. Ponto de Equilíbrio (Custo de Produção)
-    # Se vender por esse valor, não tem lucro, mas também não paga para trabalhar.
-    custo_producao = custo_material + custo_tempo + taxa_desgaste
+st.write("### Ajustes do Projeto")
+tipo_peca = st.radio("Como você vai tecer essa peça?", 
+                     ["Circular (Tubo - Ex: Porta Bic, Touca)", 
+                      "Plana (Ida e Volta - Ex: Tapete, Blusa)"])
 
-    # 5. Margem de Lucro (Markup)
-    # O valor que efetivamente vai para o bolso do artesão para a empresa crescer.
-    valor_lucro = custo_producao * (margem_lucro / 100)
+if imagem_carregada is not None:
+    img_temp = Image.open(imagem_carregada)
+    largura_original, altura_original = img_temp.size
+    proporcao = altura_original / largura_original 
     
-    # 6. Preço Final Sugerido
-    preco_final = custo_producao + valor_lucro
-
-    # --- EXIBIÇÃO DO RELATÓRIO ---
-    print(f"🧶 Tamanho do Projeto: {pontos_totais} pontos")
-    print(f"⏱️ Tempo Estimado: {horas_totais:.1f} horas\n")
+    st.info(f"📐 Resolução original da imagem: {largura_original}x{altura_original}.")
     
-    print("--- ESTRUTURA DE CUSTOS ---")
-    print(f"Material (Linha):     R$ {custo_material:.2f}")
-    print(f"Mão de Obra:          R$ {custo_tempo:.2f} (a R${valor_hora}/h)")
-    print(f"Desgaste Ferramentas: R$ {taxa_desgaste:.2f}")
-    print(f"Custo de Produção:    R$ {custo_producao:.2f}\n")
-    
-    print("--- FECHAMENTO ---")
-    print(f"Lucro Desejado ({margem_lucro}%): R$ {valor_lucro:.2f}")
-    print(f"PREÇO FINAL SUGERIDO: R$ {preco_final:.2f}")
-    print("="*40 + "\n")
+    opcao_tamanho = st.radio(
+        "Escolha o Nível de Detalhe (Resolução):",
+        ["🟢 Pequeno (Max 30 pontos)", "🟡 Médio (Max 60 pontos)", "🔴 Grande (Max 100 pontos)", "⚙️ Personalizado"]
+    )
 
-    return preco_final
+    if "Pequeno" in opcao_tamanho: max_dim = 30
+    elif "Médio" in opcao_tamanho: max_dim = 60
+    elif "Grande" in opcao_tamanho: max_dim = 100
+    else: max_dim = None
 
-# --- ÁREA DE TESTE ---
-# Vamos simular um Porta Bic de 20 pontos de largura x 20 carreiras = 400 pontos.
-# Novelo custa R$ 18,00 e vem 150 metros.
-# Você quer ganhar R$ 25,00 por hora de trabalho.
-# E quer uma margem de lucro de 30% em cima da peça.
+    if max_dim:
+        if largura_original > altura_original:
+            largura_pontos = max_dim
+            altura_carreiras = max(5, int(max_dim * proporcao))
+        else:
+            altura_carreiras = max_dim
+            largura_pontos = max(5, int(max_dim / proporcao))
+        st.success(f"**Tamanho ajustado:** {largura_pontos} pontos x {altura_carreiras} carreiras.")
+    else:
+        col1, col2 = st.columns(2)
+        with col1: largura_pontos = st.number_input("Largura (Pontos)", min_value=5, value=20)
+        with col2: altura_carreiras = st.number_input("Altura (Carreiras)", min_value=5, value=max(5, int(largura_pontos * proporcao)))
+else:
+    col1, col2 = st.columns(2)
+    with col1: largura_pontos = st.number_input("Largura (Pontos)", min_value=5, value=20)
+    with col2: altura_carreiras = st.number_input("Altura (Carreiras)", min_value=5, value=20)
 
-calcular_preco_justo(
-    pontos_totais=400, 
-    preco_novelo=18.00, 
-    metros_novelo=150, 
-    valor_hora=25.00, 
-    margem_lucro=30
-)
+st.write("### Simplificar Cores")
+num_cores = st.slider("Quantas cores de linha vai usar?", min_value=2, max_value=20, value=3)
+
+st.divider()
+st.write("### 💰 Cálculo de Custo (Opcional)")
+col_c1, col_c2 = st.columns(2)
+with col_c1: preco_novelo = st.number_input("Preço do Novelo (R$)", min_value=0.0, value=0.0, step=1.0)
+with col_c2: metros_novelo = st.number_input("Metros no Novelo (m)", min_value=0.0, value=0.0, step=10.0)
+
+total_pontos = int(largura_pontos * altura_carreiras)
+minutos_totais = int(total_pontos / 20)
+horas = minutos_totais // 60
+minutos_restantes = minutos_totais % 60
+
+metros_gastos = total_pontos * 0.045
+custo_total = 0.0 if (preco_novelo == 0 or metros_novelo == 0) else (metros_gastos * (preco_novelo / metros_novelo))
+
+st.divider()
+st.subheader("📊 Previsão")
+st.write(f"**Pontos:** {total_pontos} | **Tempo:** {horas}h e {minutos_restantes}min")
+if custo_total > 0: st.success(f"**Custo material:** R$ {custo_total:.2f}")
+
+if st.button("Gerar Tabuleiro e Baixar", type="primary"):
+    if imagem_carregada is not None:
+        try:
+            img = Image.open(imagem_carregada).convert('RGB').quantize(colors=num_cores).convert('RGB')
+            img = img.resize((largura_pontos, altura_carreiras), Image.Resampling.NEAREST)
+            st.image(img, caption=f"Prévia da peça", width=250)
+            
+            pixels = img.load()
+            cores_encontradas = {}
+            contador_cores = 1
+            for y in range(altura_carreiras):
+                for x in range(largura_pontos):
+                    rgb = pixels[x, y]
+                    if rgb not in cores_encontradas:
+                        cores_encontradas[rgb] = contador_cores
+                        contador_cores += 1
+
+            tamanho_quadrado = 40 
+            img_download = Image.new('RGB', (largura_pontos * tamanho_quadrado, altura_carreiras * tamanho_quadrado), color='white')
+            draw = ImageDraw.Draw(img_download)
+            
+            html_grid = "<div style='display: flex; flex-direction: column; gap: 1px; overflow-x: auto; padding-bottom: 10px;'>"
+            for y in range(altura_carreiras):
+                html_grid += "<div style='display: flex; gap: 1px; min-width: max-content;'>"
+                num_carr = altura_carreiras - y
+                dir = "⬅️" if "Plana" in tipo_peca and num_carr % 2 == 0 else "➔"
+                html_grid += f"<div style='width: 50px; text-align: right; font-size: 12px; margin-right: 5px; color: #888;'>C {num_carr} {dir}</div>"
+                
+                for x in range(largura_pontos):
+                    rgb = pixels[x, y]
+                    num_cor = cores_encontradas[rgb]
+                    hex_color = '#{:02x}{:02x}{:02x}'.format(rgb[0], rgb[1], rgb[2])
+                    brilho = (rgb[0]*299 + rgb[1]*587 + rgb[2]*114)/1000
+                    cor_texto = "black" if brilho > 128 else "white"
+                    
+                    tam_tela = "25px" if largura_pontos <= 40 else "12px"
+                    fnt_tela = "12px" if largura_pontos <= 40 else "0px"
+                    html_grid += f"<div style='background-color: {hex_color}; color: {cor_texto}; width: {tam_tela}; height: {tam_tela}; display: flex; align-items: center; justify-content: center; font-size: {fnt_tela}; font-weight: bold; border-radius: 2px;'>{num_cor}</div>"
+                    
+                    x0, y0 = x * tamanho_quadrado, y * tamanho_quadrado
+                    draw.rectangle([x0, y0, x0+tamanho_quadrado, y0+tamanho_quadrado], fill=rgb, outline="black")
+                    if largura_pontos <= 100: draw.text((x0 + 15, y0 + 10), str(num_cor), fill=cor_texto)
+                html_grid += "</div>"
+            html_grid += "</div>"
+            
+            buf = io.BytesIO()
+            img_download.save(buf, format="PNG")
+            st.download_button("📥 Baixar Tabuleiro (PNG)", data=buf.getvalue(), file_name="grafico.png", mime="image/png", type="primary")
+            st.write("### Visualização Rápida")
+            st.markdown(html_grid, unsafe_allow_html=True)
+            
+            st.divider()
+            for rgb, num_cor in cores_encontradas.items():
+                hex_color = '#{:02x}{:02x}{:02x}'.format(rgb[0], rgb[1], rgb[2])
+                st.markdown(f"**Cor {num_cor}:** <span style='background-color:{hex_color}; padding: 2px 25px; border-radius: 4px; border: 1px solid #aaa;'></span>", unsafe_allow_html=True)
+        except Exception as e: st.error(f"Erro: {e}")
