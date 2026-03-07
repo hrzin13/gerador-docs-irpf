@@ -72,12 +72,20 @@ if modo_entrada == "📸 Subir Imagem do Celular":
 # ---------------------------------------------------------
 else:
     st.write("#### Configure seu Padrão Geométrico")
+    
+    # A BIBLIOTECA FOI EXPANDIDA AQUI
     padrao_geometrico = st.selectbox("Selecione o desenho:", [
         "Xadrez 2x2 (Bloquinhos)", 
         "Xadrez 1x1 (Xadrezinho fino)", 
         "Listras Horizontais", 
         "Listras Verticais", 
-        "Diagonal (Escadinha)"
+        "Diagonal (Escadinha)",
+        "Tijolinhos",
+        "Ziguezague (Chevron)",
+        "Bolinhas (Poá)",
+        "Cruz (+)",
+        "Moldura / Borda",
+        "Losangos"
     ])
     
     col_tam1, col_tam2 = st.columns(2)
@@ -95,6 +103,7 @@ else:
     rgb1 = ImageColor.getrgb(cor1_hex)
     rgb2 = ImageColor.getrgb(cor2_hex)
     
+    # A MATEMÁTICA DOS NOVOS PADRÕES ENTRA AQUI
     for y in range(altura_carreiras):
         for x in range(largura_pontos):
             if padrao_geometrico == "Xadrez 2x2 (Bloquinhos)":
@@ -112,6 +121,24 @@ else:
             elif padrao_geometrico == "Diagonal (Escadinha)":
                 if (x + y) % 3 == 0: pixels_geo[x, y] = rgb1
                 else: pixels_geo[x, y] = rgb2
+            elif padrao_geometrico == "Tijolinhos":
+                if (x + (y // 2) * 3) % 6 < 3: pixels_geo[x, y] = rgb1
+                else: pixels_geo[x, y] = rgb2
+            elif padrao_geometrico == "Ziguezague (Chevron)":
+                if (x + y) % 4 == 0 or (x - y) % 4 == 0: pixels_geo[x, y] = rgb2
+                else: pixels_geo[x, y] = rgb1
+            elif padrao_geometrico == "Bolinhas (Poá)":
+                if x % 4 == 0 and y % 4 == 0: pixels_geo[x, y] = rgb2
+                else: pixels_geo[x, y] = rgb1
+            elif padrao_geometrico == "Cruz (+)":
+                if x % 5 == 2 or y % 5 == 2: pixels_geo[x, y] = rgb2
+                else: pixels_geo[x, y] = rgb1
+            elif padrao_geometrico == "Moldura / Borda":
+                if x < 2 or x > largura_pontos - 3 or y < 2 or y > altura_carreiras - 3: pixels_geo[x, y] = rgb2
+                else: pixels_geo[x, y] = rgb1
+            elif padrao_geometrico == "Losangos":
+                if (abs(x % 10 - 5) + abs(y % 10 - 5)) < 4: pixels_geo[x, y] = rgb2
+                else: pixels_geo[x, y] = rgb1
 
 
 # ==========================================
