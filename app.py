@@ -6,7 +6,7 @@ import io
 st.set_page_config(page_title="Estúdio de Crochê Pro", layout="centered")
 
 st.title("🧶 Estúdio de Crochê Pro")
-st.write("Gere seus gráficos (por foto ou padrões automáticos) e calcule o preço de venda.")
+st.write("Gere seus gráficos, controle a régua de pontos e calcule o preço de venda.")
 
 # ==========================================
 # PARTE 1: CONFIGURAÇÃO DO GRÁFICO
@@ -63,7 +63,6 @@ if modo_entrada == "📸 Subir Imagem do Celular":
         
         num_cores = st.slider("Quantas cores de linha vai usar?", min_value=2, max_value=20, value=3)
         
-        # Prepara a imagem escolhida
         img_processada = img_temp.quantize(colors=num_cores).convert('RGB')
         img_processada = img_processada.resize((largura_pontos, altura_carreiras), Image.Resampling.NEAREST)
 
@@ -73,7 +72,6 @@ if modo_entrada == "📸 Subir Imagem do Celular":
 else:
     st.write("#### Configure seu Padrão Geométrico")
     
-    # A BIBLIOTECA FOI EXPANDIDA AQUI
     padrao_geometrico = st.selectbox("Selecione o desenho:", [
         "Xadrez 2x2 (Bloquinhos)", 
         "Xadrez 1x1 (Xadrezinho fino)", 
@@ -83,7 +81,7 @@ else:
         "Tijolinhos",
         "Ziguezague (Chevron)",
         "Bolinhas (Poá)",
-        "Cruz (+)",
+        "Cruz Central (Única)",
         "Moldura / Borda",
         "Losangos"
     ])
@@ -97,13 +95,11 @@ else:
     with col_cor1: cor1_hex = st.color_picker("Cor 1 (Fundo)", "#4A4A4A")
     with col_cor2: cor2_hex = st.color_picker("Cor 2 (Desenho)", "#FFD700")
     
-    # Cria a imagem 100% via código matemático
     img_processada = Image.new('RGB', (largura_pontos, altura_carreiras))
     pixels_geo = img_processada.load()
     rgb1 = ImageColor.getrgb(cor1_hex)
     rgb2 = ImageColor.getrgb(cor2_hex)
     
-    # A MATEMÁTICA DOS NOVOS PADRÕES ENTRA AQUI
     for y in range(altura_carreiras):
         for x in range(largura_pontos):
             if padrao_geometrico == "Xadrez 2x2 (Bloquinhos)":
@@ -130,8 +126,10 @@ else:
             elif padrao_geometrico == "Bolinhas (Poá)":
                 if x % 4 == 0 and y % 4 == 0: pixels_geo[x, y] = rgb2
                 else: pixels_geo[x, y] = rgb1
-            elif padrao_geometrico == "Cruz (+)":
-                if x % 5 == 2 or y % 5 == 2: pixels_geo[x, y] = rgb2
+            elif padrao_geometrico == "Cruz Central (Única)":
+                meio_x = largura_pontos // 2
+                meio_y = altura_carreiras // 2
+                if x == meio_x or y == meio_y: pixels_geo[x, y] = rgb2
                 else: pixels_geo[x, y] = rgb1
             elif padrao_geometrico == "Moldura / Borda":
                 if x < 2 or x > largura_pontos - 3 or y < 2 or y > altura_carreiras - 3: pixels_geo[x, y] = rgb2
@@ -140,10 +138,13 @@ else:
                 if (abs(x % 10 - 5) + abs(y % 10 - 5)) < 4: pixels_geo[x, y] = rgb2
                 else: pixels_geo[x, y] = rgb1
 
-
 # ==========================================
 # GERAÇÃO DO TABULEIRO VISUAL E BOTÃO
 # ==========================================
+st.divider()
+st.write("### O que mostrar dentro dos quadradinhos?")
+estilo_texto = st.radio("", ["🔢 Número da Cor (Ex: 1, 2, 1...)", "📈 Sequência Total do Ponto (Ex: 1, 2, 3... 7000)"])
+
 if st.button("🎨 Gerar Tabuleiro e Baixar", type="primary"):
     if img_processada is not None:
         try:
@@ -159,8 +160,13 @@ if st.button("🎨 Gerar Tabuleiro e Baixar", type="primary"):
                         cores_encontradas[rgb] = contador_cores
                         contador_cores += 1
 
+            # --- PREPARANDO IMAGEM DE DOWNLOAD COM RÉGUA (MARGEM) ---
             tamanho_quadrado = 40 
-            img_download = Image.new('RGB', (largura_pontos * tamanho_quadrado, altura_carreiras * tamanho_quadrado), color='white')
+            margem = 60 # Espaço extra nas bordas para desenhar a régua
+            largura_img = (largura_pontos * tamanho_quadrado) + (margem * 2)
+            altura_img = (altura_carreiras * tamanho_quadrado) + (margem * 2)
+            
+            img_download = Image.new('RGB', (largura_img, altura_img), color='white')
             draw = ImageDraw.Draw(img_download)
             
             html_grid = "<div style='display: flex; flex-direction: column; gap: 1px; overflow-x: auto; padding-bottom: 10px;'>"
@@ -177,19 +183,66 @@ if st.button("🎨 Gerar Tabuleiro e Baixar", type="primary"):
                     brilho = (rgb[0]*299 + rgb[1]*587 + rgb[2]*114)/1000
                     cor_texto = "black" if brilho > 128 else "white"
                     
+                    if "Sequência" in estilo_texto:
+                        if "Plana" in tipo_peca and num_carr % 2 == 0:
+                            ponto_na_carr = x + 1 
+                        else:
+                            ponto_na_carr = largura_pontos - x 
+                        numero_exibicao = str(((num_carr - 1) * largura_pontos) + ponto_na_carr)
+                        fnt_tela = "10px" if largura_pontos <= 40 else "0px"
+                        if len(numero_exibicao) >= 4 and largura_pontos <= 40:
+                            fnt_tela = "8px" 
+                    else:
+                        numero_exibicao = str(num_cor)
+                        fnt_tela = "12px" if largura_pontos <= 40 else "0px"
+
+                    # 1. HTML (Na tela do celular)
                     tam_tela = "25px" if largura_pontos <= 40 else "12px"
-                    fnt_tela = "12px" if largura_pontos <= 40 else "0px"
-                    html_grid += f"<div style='background-color: {hex_color}; color: {cor_texto}; width: {tam_tela}; height: {tam_tela}; display: flex; align-items: center; justify-content: center; font-size: {fnt_tela}; font-weight: bold; border-radius: 2px;'>{num_cor}</div>"
+                    html_grid += f"<div style='background-color: {hex_color}; color: {cor_texto}; width: {tam_tela}; height: {tam_tela}; display: flex; align-items: center; justify-content: center; font-size: {fnt_tela}; font-weight: bold; border-radius: 2px;'>{numero_exibicao}</div>"
                     
-                    x0, y0 = x * tamanho_quadrado, y * tamanho_quadrado
-                    draw.rectangle([x0, y0, x0+tamanho_quadrado, y0+tamanho_quadrado], fill=rgb, outline="black")
-                    if largura_pontos <= 100: draw.text((x0 + 15, y0 + 10), str(num_cor), fill=cor_texto)
+                    # 2. Imagem de Download (Com deslocamento da margem)
+                    x0 = (x * tamanho_quadrado) + margem
+                    y0 = (y * tamanho_quadrado) + margem
+                    x1 = x0 + tamanho_quadrado
+                    y1 = y0 + tamanho_quadrado
+                    draw.rectangle([x0, y0, x1, y1], fill=rgb, outline="black")
+                    
+                    if largura_pontos <= 100: 
+                        draw.text((x0 + 5, y0 + 10), numero_exibicao, fill=cor_texto)
+
                 html_grid += "</div>"
             html_grid += "</div>"
             
+            # --- DESENHANDO A RÉGUA VISUAL NA IMAGEM DE DOWNLOAD ---
+            # Linhas guias vermelhas a cada 5 pontos
+            for y_line in range(0, altura_carreiras + 1, 5):
+                yp = (y_line * tamanho_quadrado) + margem
+                draw.line([(margem, yp), (largura_img - margem, yp)], fill="red", width=3)
+                
+            for x_line in range(0, largura_pontos + 1, 5):
+                xp = (x_line * tamanho_quadrado) + margem
+                draw.line([(xp, margem), (xp, altura_img - margem)], fill="red", width=3)
+
+            # Textos das bordas (Carreiras e Colunas)
+            for y_num in range(altura_carreiras):
+                num_carr = altura_carreiras - y_num
+                dir = "<-" if "Plana" in tipo_peca and num_carr % 2 == 0 else "->"
+                y_pos = (y_num * tamanho_quadrado) + margem + 12
+                # Margem Esquerda e Direita
+                draw.text((10, y_pos), f"C{num_carr} {dir}", fill="black")
+                draw.text((largura_img - margem + 10, y_pos), f"C{num_carr} {dir}", fill="black")
+
+            for x_num in range(largura_pontos):
+                # Marcação a cada 5 pontos ou no início/fim
+                if (x_num + 1) % 5 == 0 or x_num == 0 or x_num == largura_pontos - 1:
+                    x_pos = (x_num * tamanho_quadrado) + margem + 15
+                    # Margem Superior e Inferior
+                    draw.text((x_pos, margem - 25), str(x_num + 1), fill="black")
+                    draw.text((x_pos, altura_img - margem + 10), str(x_num + 1), fill="black")
+            
             buf = io.BytesIO()
             img_download.save(buf, format="PNG")
-            st.download_button("📥 Baixar Tabuleiro (PNG)", data=buf.getvalue(), file_name="meu_grafico_croche.png", mime="image/png", type="secondary")
+            st.download_button("📥 Baixar Tabuleiro (PNG)", data=buf.getvalue(), file_name="meu_grafico_croche_regua.png", mime="image/png", type="secondary")
             
             st.write("### Visualização Rápida")
             st.markdown(html_grid, unsafe_allow_html=True)
@@ -198,7 +251,7 @@ if st.button("🎨 Gerar Tabuleiro e Baixar", type="primary"):
             for rgb, num_cor in cores_encontradas.items():
                 hex_color = '#{:02x}{:02x}{:02x}'.format(rgb[0], rgb[1], rgb[2])
                 st.markdown(f"**Cor {num_cor}:** <span style='background-color:{hex_color}; padding: 2px 25px; border-radius: 4px; border: 1px solid #aaa;'></span>", unsafe_allow_html=True)
-        except Exception as e: st.error(f"Erro: {e}")
+        except Exception as e: st.error(f"Erro ao desenhar a régua: {e}")
     else:
         st.warning("⚠️ Forneça uma imagem ou configure um padrão primeiro antes de gerar o tabuleiro.")
 
@@ -241,4 +294,3 @@ col_res3.metric("Custo Mão de Obra", f"R$ {custo_tempo:.2f}")
 
 st.success(f"### Preço Sugerido de Venda: R$ {preco_final:.2f}")
 st.caption(f"*O preço sugerido cobre a sua mão de obra (R$ {custo_tempo:.2f}), o material gasto, o desgaste das ferramentas (R$ {taxa_desgaste:.2f}) e ainda garante R$ {valor_lucro:.2f} de lucro limpo para você ou para investir.*")
-
