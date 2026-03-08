@@ -3,18 +3,23 @@ from PIL import Image, ImageDraw, ImageColor
 import io
 import json
 import os
+import csv
+from datetime import datetime
 
 # ==========================================
-# MOTOR DE BASE DE DADOS (JSON)
+# MOTOR DE BASE DE DADOS (JSON) COM HISTÓRICO
 # ==========================================
 FICHEIRO_BD = "contabilidade_croche.json"
 
 def carregar_bd():
     if not os.path.exists(FICHEIRO_BD):
-        # Cria a estrutura inicial do balanço
-        return {"inventario": {}, "lucro_acumulado": 0.0, "pecas_produzidas": 0}
+        return {"inventario": {}, "lucro_acumulado": 0.0, "pecas_produzidas": 0, "historico_vendas": []}
     with open(FICHEIRO_BD, "r", encoding="utf-8") as f:
-        return json.load(f)
+        dados = json.load(f)
+        # Garante que o histórico existe para quem já usava a versão anterior
+        if "historico_vendas" not in dados:
+            dados["historico_vendas"] = []
+        return dados
 
 def guardar_bd(dados):
     with open(FICHEIRO_BD, "w", encoding="utf-8") as f:
@@ -28,31 +33,30 @@ bd = carregar_bd()
 st.set_page_config(page_title="Estúdio de Crochê Pro", layout="centered")
 
 st.title("🧶 Estúdio de Crochê Pro")
-st.write("Gere gráficos, controle o inventário e apure os lucros num só lugar.")
+st.write("Gere gráficos, controle o inventário e exporte os seus relatórios financeiros.")
 
 # Criação dos Separadores (Tabs)
-tab_gerador, tab_gestao = st.tabs(["🎨 Gerador de Gráfico", "📊 Gestão e Inventário"])
+tab_gerador, tab_gestao = st.tabs(["🎨 Gerador de Gráfico", "📊 Gestão, Inventário e Relatórios"])
 
 # ==========================================
-# SEPARADOR 1: GERADOR DE GRÁFICO (O TEU CÓDIGO INTACTO)
+# SEPARADOR 1: GERADOR DE GRÁFICO
 # ==========================================
 with tab_gerador:
     st.header("1️⃣ Parte 1: Gerador de Gráfico")
 
-    tipo_peca = st.radio("Como vais tecer esta peça?", 
-                         ["Circular (Tubo - Ex: Porta Isqueiro, Touca)", 
+    tipo_peca = st.radio("Como você vai tecer essa peça?", 
+                         ["Circular (Tubo - Ex: Porta Bic, Touca)", 
                           "Plana (Ida e Volta - Ex: Tapete, Blusa)"])
 
-    st.write("### Como desejas criar o desenho?")
-    modo_entrada = st.radio("", ["📸 Subir Imagem do Telemóvel", "📐 Gerar Padrão Geométrico (Automático)"])
+    st.write("### Como deseja criar o desenho?")
+    modo_entrada = st.radio("", ["📸 Subir Imagem do Celular", "📐 Gerar Padrão Geométrico (Automático)"])
 
-    # Variáveis globais
     largura_pontos = 20
     altura_carreiras = 20
     img_processada = None
 
-    if modo_entrada == "📸 Subir Imagem do Telemóvel":
-        imagem_carregada = st.file_uploader("Anexa o teu desenho aqui (png, jpg)", type=["png", "jpg", "jpeg"])
+    if modo_entrada == "📸 Subir Imagem do Celular":
+        imagem_carregada = st.file_uploader("Anexe o seu desenho aqui (png, jpg)", type=["png", "jpg", "jpeg"])
         
         if imagem_carregada is not None:
             img_temp = Image.open(imagem_carregada).convert('RGB')
@@ -62,7 +66,7 @@ with tab_gerador:
             st.info(f"📐 Resolução original da imagem: {largura_original}x{altura_original}.")
             
             opcao_tamanho = st.radio(
-                "Escolhe o Nível de Detalhe (Resolução):",
+                "Escolha o Nível de Detalhe:",
                 ["🟢 Pequeno (Max 30 pontos)", "🟡 Médio (Max 60 pontos)", "🔴 Grande (Max 100 pontos)", "⚙️ Personalizado"]
             )
 
@@ -84,16 +88,16 @@ with tab_gerador:
                 with col1: largura_pontos = st.number_input("Largura (Pontos)", min_value=5, value=20)
                 with col2: altura_carreiras = st.number_input("Altura (Carreiras)", min_value=5, value=max(5, int(largura_pontos * proporcao)))
             
-            num_cores = st.slider("Quantas cores de fio vais usar?", min_value=2, max_value=20, value=3)
+            num_cores = st.slider("Quantas cores de linha vai usar?", min_value=2, max_value=20, value=3)
             
             img_processada = img_temp.quantize(colors=num_cores).convert('RGB')
             img_processada = img_processada.resize((largura_pontos, altura_carreiras), Image.Resampling.NEAREST)
 
     else:
-        st.write("#### Configura o teu Padrão Geométrico")
-        padrao_geometrico = st.selectbox("Seleciona o desenho:", [
-            "Xadrez 2x2 (Blocos)", "Xadrez 1x1 (Fino)", "Listras Horizontais", 
-            "Listras Verticais", "Diagonal (Escada)", "Tijolos",
+        st.write("#### Configure seu Padrão Geométrico")
+        padrao_geometrico = st.selectbox("Selecione o desenho:", [
+            "Xadrez 2x2 (Bloquinhos)", "Xadrez 1x1 (Xadrezinho fino)", "Listras Horizontais", 
+            "Listras Verticais", "Diagonal (Escadinha)", "Tijolinhos",
             "Ziguezague (Chevron)", "Bolinhas (Poá)", "Cruz Central (Única)",
             "Moldura / Borda", "Losangos"
         ])
@@ -102,7 +106,7 @@ with tab_gerador:
         with col_tam1: largura_pontos = st.number_input("Largura (Pontos)", min_value=5, value=20)
         with col_tam2: altura_carreiras = st.number_input("Altura (Carreiras)", min_value=5, value=20)
         
-        st.write("Escolhe as 2 cores do teu padrão:")
+        st.write("Escolha as 2 cores do seu padrão:")
         col_cor1, col_cor2 = st.columns(2)
         with col_cor1: cor1_hex = st.color_picker("Cor 1 (Fundo)", "#4A4A4A")
         with col_cor2: cor2_hex = st.color_picker("Cor 2 (Desenho)", "#FFD700")
@@ -114,28 +118,17 @@ with tab_gerador:
         
         for y in range(altura_carreiras):
             for x in range(largura_pontos):
-                if padrao_geometrico == "Xadrez 2x2 (Blocos)":
-                    pixels_geo[x, y] = rgb1 if (x // 2 + y // 2) % 2 == 0 else rgb2
-                elif padrao_geometrico == "Xadrez 1x1 (Fino)":
-                    pixels_geo[x, y] = rgb1 if (x + y) % 2 == 0 else rgb2
-                elif padrao_geometrico == "Listras Horizontais":
-                    pixels_geo[x, y] = rgb1 if (y // 2) % 2 == 0 else rgb2
-                elif padrao_geometrico == "Listras Verticais":
-                    pixels_geo[x, y] = rgb1 if (x // 2) % 2 == 0 else rgb2
-                elif padrao_geometrico == "Diagonal (Escada)":
-                    pixels_geo[x, y] = rgb1 if (x + y) % 3 == 0 else rgb2
-                elif padrao_geometrico == "Tijolos":
-                    pixels_geo[x, y] = rgb1 if (x + (y // 2) * 3) % 6 < 3 else rgb2
-                elif padrao_geometrico == "Ziguezague (Chevron)":
-                    pixels_geo[x, y] = rgb2 if (x + y) % 4 == 0 or (x - y) % 4 == 0 else rgb1
-                elif padrao_geometrico == "Bolinhas (Poá)":
-                    pixels_geo[x, y] = rgb2 if x % 4 == 0 and y % 4 == 0 else rgb1
-                elif padrao_geometrico == "Cruz Central (Única)":
-                    pixels_geo[x, y] = rgb2 if x == largura_pontos // 2 or y == altura_carreiras // 2 else rgb1
-                elif padrao_geometrico == "Moldura / Borda":
-                    pixels_geo[x, y] = rgb2 if x < 2 or x > largura_pontos - 3 or y < 2 or y > altura_carreiras - 3 else rgb1
-                elif padrao_geometrico == "Losangos":
-                    pixels_geo[x, y] = rgb2 if (abs(x % 10 - 5) + abs(y % 10 - 5)) < 4 else rgb1
+                if padrao_geometrico == "Xadrez 2x2 (Bloquinhos)": pixels_geo[x, y] = rgb1 if (x // 2 + y // 2) % 2 == 0 else rgb2
+                elif padrao_geometrico == "Xadrez 1x1 (Xadrezinho fino)": pixels_geo[x, y] = rgb1 if (x + y) % 2 == 0 else rgb2
+                elif padrao_geometrico == "Listras Horizontais": pixels_geo[x, y] = rgb1 if (y // 2) % 2 == 0 else rgb2
+                elif padrao_geometrico == "Listras Verticais": pixels_geo[x, y] = rgb1 if (x // 2) % 2 == 0 else rgb2
+                elif padrao_geometrico == "Diagonal (Escadinha)": pixels_geo[x, y] = rgb1 if (x + y) % 3 == 0 else rgb2
+                elif padrao_geometrico == "Tijolinhos": pixels_geo[x, y] = rgb1 if (x + (y // 2) * 3) % 6 < 3 else rgb2
+                elif padrao_geometrico == "Ziguezague (Chevron)": pixels_geo[x, y] = rgb2 if (x + y) % 4 == 0 or (x - y) % 4 == 0 else rgb1
+                elif padrao_geometrico == "Bolinhas (Poá)": pixels_geo[x, y] = rgb2 if x % 4 == 0 and y % 4 == 0 else rgb1
+                elif padrao_geometrico == "Cruz Central (Única)": pixels_geo[x, y] = rgb2 if x == largura_pontos // 2 or y == altura_carreiras // 2 else rgb1
+                elif padrao_geometrico == "Moldura / Borda": pixels_geo[x, y] = rgb2 if x < 2 or x > largura_pontos - 3 or y < 2 or y > altura_carreiras - 3 else rgb1
+                elif padrao_geometrico == "Losangos": pixels_geo[x, y] = rgb2 if (abs(x % 10 - 5) + abs(y % 10 - 5)) < 4 else rgb1
 
     st.divider()
     st.write("### O que mostrar dentro dos quadradinhos?")
@@ -226,7 +219,7 @@ with tab_gerador:
                 st.markdown(html_grid, unsafe_allow_html=True)
             except Exception as e: st.error(f"Erro: {e}")
         else:
-            st.warning("⚠️ Fornece uma imagem ou configura um padrão primeiro.")
+            st.warning("⚠️ Forneça uma imagem ou configure um padrão primeiro.")
 
     st.divider()
 
@@ -252,7 +245,7 @@ with tab_gerador:
             st.info(f"Fio associado: Custa R$ {preco_novelo:.2f} por {metros_novelo}m. (Restam {bd['inventario'][fio_selecionado]['metros_restantes']:.2f}m)")
             
     with col_calc2:
-        valor_hora = st.number_input("Tua Hora de Trabalho (R$/h)", min_value=0.0, value=25.0, step=1.0)
+        valor_hora = st.number_input("Sua Hora de Trabalho (R$/h)", min_value=0.0, value=25.0, step=1.0)
         margem_lucro = st.number_input("Margem de Lucro (%)", min_value=0.0, value=30.0, step=5.0)
 
     custo_material = metros_gastos * (preco_novelo / metros_novelo)
@@ -270,36 +263,69 @@ with tab_gerador:
     col_res1.metric("Tempo", f"{int(horas_totais)}h {int(minutos_totais % 60)}m")
     col_res2.metric("Material", f"R$ {custo_material:.2f}")
     col_res3.metric("Mão de Obra", f"R$ {custo_tempo:.2f}")
-    st.success(f"### Preço de Venda: R$ {preco_final:.2f}")
+    st.success(f"### Preço de Venda Sugerido: R$ {preco_final:.2f}")
 
-    # BOTÃO PARA REGISTAR A SAÍDA NO INVENTÁRIO
+    # BOTÃO PARA REGISTRAR A SAÍDA NO INVENTÁRIO E NO HISTÓRICO
     if fio_selecionado != "Inserir Manualmente":
-        if st.button("✅ Confirmar Produção e Atualizar Inventário", type="primary"):
+        if st.button("✅ Confirmar Produção e Gerar Orçamento", type="primary"):
             if bd["inventario"][fio_selecionado]["metros_restantes"] >= metros_gastos:
+                # Desconta o estoque
                 bd["inventario"][fio_selecionado]["metros_restantes"] -= metros_gastos
+                # Atualiza métricas gerais
                 bd["lucro_acumulado"] += valor_lucro
                 bd["pecas_produzidas"] += 1
+                
+                # NOVO: Grava no Livro Diário (Histórico)
+                data_atual = datetime.now().strftime("%d/%m/%Y %H:%M")
+                novo_registro = {
+                    "Data": data_atual,
+                    "Fio Usado": fio_selecionado,
+                    "Total de Pontos": total_pontos,
+                    "Metros Gastos": round(metros_gastos, 2),
+                    "Custo de Producao (R$)": round(custo_producao, 2),
+                    "Lucro (R$)": round(valor_lucro, 2),
+                    "Preco de Venda (R$)": round(preco_final, 2)
+                }
+                bd["historico_vendas"].append(novo_registro)
+                
                 guardar_bd(bd)
-                st.success(f"Registo feito! Foram descontados {metros_gastos:.2f}m do stock de '{fio_selecionado}'. Lucro de R$ {valor_lucro:.2f} apurado no sistema.")
+                st.success(f"Orçamento arquivado! Foram descontados {metros_gastos:.2f}m do estoque de '{fio_selecionado}'. Lucro de R$ {valor_lucro:.2f} apurado no sistema.")
             else:
-                st.error("⚠️ Atenção: Não tens metros suficientes no stock para produzir esta peça!")
+                st.error("⚠️ Atenção: Você não tem metros suficientes no estoque para produzir esta peça!")
 
 # ==========================================
-# SEPARADOR 2: GESTÃO DE INVENTÁRIO (O NOVO ERP)
+# SEPARADOR 2: GESTÃO E RELATÓRIOS (O NOVO ERP)
 # ==========================================
 with tab_gestao:
-    st.header("📦 Gestão de Stock e Finanças")
+    st.header("📦 Gestão de Estoque e Finanças")
     
-    # 1. Painel de Indicadores de Gestão
+    # 1. Painel de Indicadores
     st.write("### 📈 Balanço Geral")
     col_ind1, col_ind2 = st.columns(2)
-    col_ind1.metric("Lucro Acumulado Projetado", f"R$ {bd['lucro_acumulado']:.2f}")
-    col_ind2.metric("Peças Produzidas", f"{bd['pecas_produzidas']} peças")
+    col_ind1.metric("Lucro Acumulado", f"R$ {bd['lucro_acumulado']:.2f}")
+    col_ind2.metric("Orçamentos Confirmados", f"{bd['pecas_produzidas']} peças")
     
+    # GERADOR DE PLANILHA (CSV)
+    if len(bd["historico_vendas"]) > 0:
+        csv_buffer = io.StringIO()
+        cabecalhos = ["Data", "Fio Usado", "Total de Pontos", "Metros Gastos", "Custo de Producao (R$)", "Lucro (R$)", "Preco de Venda (R$)"]
+        writer = csv.DictWriter(csv_buffer, fieldnames=cabecalhos, delimiter=';') # Ponto e vírgula facilita abrir no Excel BR
+        writer.writeheader()
+        writer.writerows(bd["historico_vendas"])
+        
+        st.download_button(
+            label="📉 Baixar Relatório Completo (Planilha CSV)", 
+            data=csv_buffer.getvalue(), 
+            file_name="relatorio_orcamentos_croche.csv", 
+            mime="text/csv",
+            type="primary"
+        )
+        st.caption("*O arquivo baixado pode ser aberto diretamente no Excel ou importado para o Google Sheets.*")
+
     st.divider()
 
-    # 2. Registar Novo Ativo (Fio)
-    st.write("### ➕ Registar Novo Fio de Crochê")
+    # 2. Registrar Novo Ativo (Fio)
+    st.write("### ➕ Registrar Novo Fio no Estoque")
     with st.form("form_inventario", clear_on_submit=True):
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1: nome_fio = st.text_input("Nome/Cor do Fio (Ex: Amarelo Círculo)")
@@ -314,22 +340,21 @@ with tab_gestao:
                     "metros_restantes": metros_fio
                 }
                 guardar_bd(bd)
-                st.success(f"Ativo '{nome_fio}' registado com sucesso no livro razão!")
-                st.rerun() # Atualiza o ecrã instantaneamente
+                st.success(f"Fio '{nome_fio}' registrado com sucesso no estoque!")
+                st.rerun() 
             else:
                 st.error("O nome do fio é obrigatório.")
 
     # 3. Visualizar Inventário Atual
-    st.write("### 📋 O teu Inventário Atual")
+    st.write("### 📋 Seu Estoque Atual")
     if len(bd["inventario"]) > 0:
         for nome, dados in bd["inventario"].items():
             percentagem = (dados["metros_restantes"] / dados["metros_total"]) * 100
-            cor_barra = "green" if percentagem > 20 else "red"
             
             st.write(f"**{nome}** (Custo original: R$ {dados['preco']:.2f})")
             st.progress(int(percentagem), text=f"Restam {dados['metros_restantes']:.2f}m de {dados['metros_total']}m")
             if percentagem <= 20:
-                st.warning(f"⚠️ Atenção: O stock do fio '{nome}' está a acabar!")
+                st.warning(f"⚠️ Atenção: O estoque do fio '{nome}' está no fim!")
             st.write("---")
     else:
-        st.info("O teu inventário está vazio. Regista a tua primeira compra acima.")
+        st.info("Seu inventário está vazio. Registre sua primeira compra acima.")
