@@ -5,6 +5,7 @@ import json
 import os
 import csv
 from datetime import datetime
+import math # Importante para a matemática dos novos padrões!
 
 # ==========================================
 # MOTOR DE BASE DE DADOS (JSON) COM HISTÓRICO
@@ -16,7 +17,6 @@ def carregar_bd():
         return {"inventario": {}, "lucro_acumulado": 0.0, "pecas_produzidas": 0, "historico_vendas": []}
     with open(FICHEIRO_BD, "r", encoding="utf-8") as f:
         dados = json.load(f)
-        # Garante que o histórico existe para quem já usava a versão anterior
         if "historico_vendas" not in dados:
             dados["historico_vendas"] = []
         return dados
@@ -49,7 +49,7 @@ with tab_gerador:
                           "Plana (Ida e Volta - Ex: Tapete, Blusa)"])
 
     st.write("### Como deseja criar o desenho?")
-    modo_entrada = st.radio("", ["📸 Subir Imagem do Celular", "📐 Gerar Padrão Geométrico (Automático)"])
+    modo_entrada = st.radio("", ["📸 Subir Imagem do Celular", "📐 Gerar Padrão Matemático (Automático)"])
 
     largura_pontos = 20
     altura_carreiras = 20
@@ -94,22 +94,31 @@ with tab_gerador:
             img_processada = img_processada.resize((largura_pontos, altura_carreiras), Image.Resampling.NEAREST)
 
     else:
-        st.write("#### Configure seu Padrão Geométrico")
-        padrao_geometrico = st.selectbox("Selecione o desenho:", [
-            "Xadrez 2x2 (Bloquinhos)", "Xadrez 1x1 (Xadrezinho fino)", "Listras Horizontais", 
-            "Listras Verticais", "Diagonal (Escadinha)", "Tijolinhos",
-            "Ziguezague (Chevron)", "Bolinhas (Poá)", "Cruz Central (Única)",
-            "Moldura / Borda", "Losangos"
-        ])
+        # NOVO SISTEMA DE CATEGORIAS
+        st.write("#### Configure seu Padrão Gerado")
+        
+        categoria_padrao = st.selectbox("📁 Escolha a Categoria:", ["Geométricos Clássicos", "Símbolos e Arte"])
+        
+        if categoria_padrao == "Geométricos Clássicos":
+            lista_padroes = [
+                "Xadrez 2x2 (Bloquinhos)", "Xadrez 1x1 (Xadrezinho fino)", "Listras Horizontais", 
+                "Listras Verticais", "Diagonal (Escadinha)", "Tijolinhos",
+                "Ziguezague (Chevron)", "Bolinhas (Poá)", "Cruz Central (Única)",
+                "Moldura / Borda", "Losangos"
+            ]
+        else:
+            lista_padroes = ["Folha (Arte Botânica)", "Coração (Pixel Art)"]
+            
+        padrao_geometrico = st.selectbox("✨ Selecione o desenho:", lista_padroes)
         
         col_tam1, col_tam2 = st.columns(2)
-        with col_tam1: largura_pontos = st.number_input("Largura (Pontos)", min_value=5, value=20)
-        with col_tam2: altura_carreiras = st.number_input("Altura (Carreiras)", min_value=5, value=20)
+        with col_tam1: largura_pontos = st.number_input("Largura (Pontos)", min_value=10, value=30) # Aumentado para melhor resolução da arte
+        with col_tam2: altura_carreiras = st.number_input("Altura (Carreiras)", min_value=10, value=30)
         
         st.write("Escolha as 2 cores do seu padrão:")
         col_cor1, col_cor2 = st.columns(2)
-        with col_cor1: cor1_hex = st.color_picker("Cor 1 (Fundo)", "#4A4A4A")
-        with col_cor2: cor2_hex = st.color_picker("Cor 2 (Desenho)", "#FFD700")
+        with col_cor1: cor1_hex = st.color_picker("Cor 1 (Fundo)", "#2C2C2C")
+        with col_cor2: cor2_hex = st.color_picker("Cor 2 (Desenho)", "#00FF00" if padrao_geometrico == "Folha (Arte Botânica)" else "#FFD700")
         
         img_processada = Image.new('RGB', (largura_pontos, altura_carreiras))
         pixels_geo = img_processada.load()
@@ -118,6 +127,7 @@ with tab_gerador:
         
         for y in range(altura_carreiras):
             for x in range(largura_pontos):
+                # GEOMÉTRICOS CLÁSSICOS
                 if padrao_geometrico == "Xadrez 2x2 (Bloquinhos)": pixels_geo[x, y] = rgb1 if (x // 2 + y // 2) % 2 == 0 else rgb2
                 elif padrao_geometrico == "Xadrez 1x1 (Xadrezinho fino)": pixels_geo[x, y] = rgb1 if (x + y) % 2 == 0 else rgb2
                 elif padrao_geometrico == "Listras Horizontais": pixels_geo[x, y] = rgb1 if (y // 2) % 2 == 0 else rgb2
@@ -129,6 +139,41 @@ with tab_gerador:
                 elif padrao_geometrico == "Cruz Central (Única)": pixels_geo[x, y] = rgb2 if x == largura_pontos // 2 or y == altura_carreiras // 2 else rgb1
                 elif padrao_geometrico == "Moldura / Borda": pixels_geo[x, y] = rgb2 if x < 2 or x > largura_pontos - 3 or y < 2 or y > altura_carreiras - 3 else rgb1
                 elif padrao_geometrico == "Losangos": pixels_geo[x, y] = rgb2 if (abs(x % 10 - 5) + abs(y % 10 - 5)) < 4 else rgb1
+                
+                # SÍMBOLOS E ARTE (Cálculos Matemáticos Avançados)
+                elif padrao_geometrico == "Folha (Arte Botânica)":
+                    cx = largura_pontos / 2
+                    cy = altura_carreiras * 0.75 # Base da folha um pouco mais para baixo
+                    dx = x - cx
+                    dy = cy - y # Invertido porque o Y desce na tela
+                    dist = math.hypot(dx, dy)
+                    angle = math.atan2(dy, dx) if dx != 0 or dy != 0 else 0
+                    
+                    # Caule
+                    if -1 <= dx <= 1 and cy <= y <= cy + (altura_carreiras * 0.2):
+                        pixels_geo[x, y] = rgb2
+                    # Lóbulos da folha (Onda polar de 7 pontas)
+                    elif 0 <= angle <= math.pi:
+                        # Achata um pouco o tamanho das folhas laterais
+                        tamanho_max = (altura_carreiras * 0.6) * (1 - 0.3 * abs(math.cos(angle)))
+                        limite_raio = tamanho_max * abs(math.sin(7 * angle))
+                        if dist <= limite_raio:
+                            pixels_geo[x, y] = rgb2
+                        else:
+                            pixels_geo[x, y] = rgb1
+                    else:
+                        pixels_geo[x, y] = rgb1
+                        
+                elif padrao_geometrico == "Coração (Pixel Art)":
+                    cx = largura_pontos / 2
+                    cy = altura_carreiras / 2
+                    escala = min(largura_pontos, altura_carreiras) / 2.5
+                    vx = (x - cx) / escala
+                    vy = (cy - y) / (escala * 1.1)
+                    if (vx**2 + vy**2 - 1)**3 - (vx**2) * (vy**3) <= 0:
+                        pixels_geo[x, y] = rgb2
+                    else:
+                        pixels_geo[x, y] = rgb1
 
     st.divider()
     st.write("### O que mostrar dentro dos quadradinhos?")
@@ -265,17 +310,13 @@ with tab_gerador:
     col_res3.metric("Mão de Obra", f"R$ {custo_tempo:.2f}")
     st.success(f"### Preço de Venda Sugerido: R$ {preco_final:.2f}")
 
-    # BOTÃO PARA REGISTRAR A SAÍDA NO INVENTÁRIO E NO HISTÓRICO
     if fio_selecionado != "Inserir Manualmente":
         if st.button("✅ Confirmar Produção e Gerar Orçamento", type="primary"):
             if bd["inventario"][fio_selecionado]["metros_restantes"] >= metros_gastos:
-                # Desconta o estoque
                 bd["inventario"][fio_selecionado]["metros_restantes"] -= metros_gastos
-                # Atualiza métricas gerais
                 bd["lucro_acumulado"] += valor_lucro
                 bd["pecas_produzidas"] += 1
                 
-                # NOVO: Grava no Livro Diário (Histórico)
                 data_atual = datetime.now().strftime("%d/%m/%Y %H:%M")
                 novo_registro = {
                     "Data": data_atual,
@@ -294,22 +335,20 @@ with tab_gerador:
                 st.error("⚠️ Atenção: Você não tem metros suficientes no estoque para produzir esta peça!")
 
 # ==========================================
-# SEPARADOR 2: GESTÃO E RELATÓRIOS (O NOVO ERP)
+# SEPARADOR 2: GESTÃO E RELATÓRIOS
 # ==========================================
 with tab_gestao:
     st.header("📦 Gestão de Estoque e Finanças")
     
-    # 1. Painel de Indicadores
     st.write("### 📈 Balanço Geral")
     col_ind1, col_ind2 = st.columns(2)
     col_ind1.metric("Lucro Acumulado", f"R$ {bd['lucro_acumulado']:.2f}")
     col_ind2.metric("Orçamentos Confirmados", f"{bd['pecas_produzidas']} peças")
     
-    # GERADOR DE PLANILHA (CSV)
     if len(bd["historico_vendas"]) > 0:
         csv_buffer = io.StringIO()
         cabecalhos = ["Data", "Fio Usado", "Total de Pontos", "Metros Gastos", "Custo de Producao (R$)", "Lucro (R$)", "Preco de Venda (R$)"]
-        writer = csv.DictWriter(csv_buffer, fieldnames=cabecalhos, delimiter=';') # Ponto e vírgula facilita abrir no Excel BR
+        writer = csv.DictWriter(csv_buffer, fieldnames=cabecalhos, delimiter=';')
         writer.writeheader()
         writer.writerows(bd["historico_vendas"])
         
@@ -324,7 +363,6 @@ with tab_gestao:
 
     st.divider()
 
-    # 2. Registrar Novo Ativo (Fio)
     st.write("### ➕ Registrar Novo Fio no Estoque")
     with st.form("form_inventario", clear_on_submit=True):
         col_f1, col_f2, col_f3 = st.columns(3)
@@ -345,7 +383,6 @@ with tab_gestao:
             else:
                 st.error("O nome do fio é obrigatório.")
 
-    # 3. Visualizar Inventário Atual
     st.write("### 📋 Seu Estoque Atual")
     if len(bd["inventario"]) > 0:
         for nome, dados in bd["inventario"].items():
