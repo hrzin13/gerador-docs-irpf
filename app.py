@@ -8,6 +8,15 @@ from datetime import datetime
 import math # Importante para a matemática dos novos padrões!
 
 # ==========================================
+# INICIALIZAÇÃO DA MEMÓRIA TEMPORÁRIA (SESSÃO)
+# ==========================================
+# Isso garante que o app lembre o número que você digitou
+if 'ponto_parada' not in st.session_state:
+    st.session_state.ponto_parada = 1
+if 'grafico_ativo' not in st.session_state:
+    st.session_state.grafico_ativo = False
+
+# ==========================================
 # MOTOR DE BASE DE DADOS (JSON) COM HISTÓRICO
 # ==========================================
 FICHEIRO_BD = "contabilidade_croche.json"
@@ -94,7 +103,6 @@ with tab_gerador:
             img_processada = img_processada.resize((largura_pontos, altura_carreiras), Image.Resampling.NEAREST)
 
     else:
-        # NOVO SISTEMA DE CATEGORIAS
         st.write("#### Configure seu Padrão Gerado")
         
         categoria_padrao = st.selectbox("📁 Escolha a Categoria:", ["Geométricos Clássicos", "Símbolos e Arte"])
@@ -112,7 +120,7 @@ with tab_gerador:
         padrao_geometrico = st.selectbox("✨ Selecione o desenho:", lista_padroes)
         
         col_tam1, col_tam2 = st.columns(2)
-        with col_tam1: largura_pontos = st.number_input("Largura (Pontos)", min_value=10, value=30) # Aumentado para melhor resolução da arte
+        with col_tam1: largura_pontos = st.number_input("Largura (Pontos)", min_value=10, value=30) 
         with col_tam2: altura_carreiras = st.number_input("Altura (Carreiras)", min_value=10, value=30)
         
         st.write("Escolha as 2 cores do seu padrão:")
@@ -127,7 +135,6 @@ with tab_gerador:
         
         for y in range(altura_carreiras):
             for x in range(largura_pontos):
-                # GEOMÉTRICOS CLÁSSICOS
                 if padrao_geometrico == "Xadrez 2x2 (Bloquinhos)": pixels_geo[x, y] = rgb1 if (x // 2 + y // 2) % 2 == 0 else rgb2
                 elif padrao_geometrico == "Xadrez 1x1 (Xadrezinho fino)": pixels_geo[x, y] = rgb1 if (x + y) % 2 == 0 else rgb2
                 elif padrao_geometrico == "Listras Horizontais": pixels_geo[x, y] = rgb1 if (y // 2) % 2 == 0 else rgb2
@@ -139,22 +146,17 @@ with tab_gerador:
                 elif padrao_geometrico == "Cruz Central (Única)": pixels_geo[x, y] = rgb2 if x == largura_pontos // 2 or y == altura_carreiras // 2 else rgb1
                 elif padrao_geometrico == "Moldura / Borda": pixels_geo[x, y] = rgb2 if x < 2 or x > largura_pontos - 3 or y < 2 or y > altura_carreiras - 3 else rgb1
                 elif padrao_geometrico == "Losangos": pixels_geo[x, y] = rgb2 if (abs(x % 10 - 5) + abs(y % 10 - 5)) < 4 else rgb1
-                
-                # SÍMBOLOS E ARTE (Cálculos Matemáticos Avançados)
                 elif padrao_geometrico == "Folha (Arte Botânica)":
                     cx = largura_pontos / 2
-                    cy = altura_carreiras * 0.75 # Base da folha um pouco mais para baixo
+                    cy = altura_carreiras * 0.75 
                     dx = x - cx
-                    dy = cy - y # Invertido porque o Y desce na tela
+                    dy = cy - y 
                     dist = math.hypot(dx, dy)
                     angle = math.atan2(dy, dx) if dx != 0 or dy != 0 else 0
                     
-                    # Caule
                     if -1 <= dx <= 1 and cy <= y <= cy + (altura_carreiras * 0.2):
                         pixels_geo[x, y] = rgb2
-                    # Lóbulos da folha (Onda polar de 7 pontas)
                     elif 0 <= angle <= math.pi:
-                        # Achata um pouco o tamanho das folhas laterais
                         tamanho_max = (altura_carreiras * 0.6) * (1 - 0.3 * abs(math.cos(angle)))
                         limite_raio = tamanho_max * abs(math.sin(7 * angle))
                         if dist <= limite_raio:
@@ -179,92 +181,147 @@ with tab_gerador:
     st.write("### O que mostrar dentro dos quadradinhos?")
     estilo_texto = st.radio("", ["🔢 Número da Cor (Ex: 1, 2, 1...)", "📈 Sequência Total do Ponto (Ex: 1... 7000)"])
 
-    if st.button("🎨 Gerar Tabuleiro e Baixar", type="primary"):
+    # NOVO BOTÃO: Ativa a memória da sessão para liberar o gráfico interativo
+    if st.button("🎨 Gerar Tabuleiro e Iniciar Foco", type="primary"):
         if img_processada is not None:
-            try:
-                st.image(img_processada, caption=f"Prévia ({largura_pontos}x{altura_carreiras})", width=250)
-                
-                pixels = img_processada.load()
-                cores_encontradas = {}
-                contador_cores = 1
-                for y in range(altura_carreiras):
-                    for x in range(largura_pontos):
-                        rgb = pixels[x, y]
-                        if rgb not in cores_encontradas:
-                            cores_encontradas[rgb] = contador_cores
-                            contador_cores += 1
-
-                tamanho_quadrado = 40 
-                margem = 60 
-                largura_img = (largura_pontos * tamanho_quadrado) + (margem * 2)
-                altura_img = (altura_carreiras * tamanho_quadrado) + (margem * 2)
-                
-                img_download = Image.new('RGB', (largura_img, altura_img), color='white')
-                draw = ImageDraw.Draw(img_download)
-                
-                html_grid = "<div style='display: flex; flex-direction: column; gap: 1px; overflow-x: auto; padding-bottom: 10px;'>"
-                for y in range(altura_carreiras):
-                    html_grid += "<div style='display: flex; gap: 1px; min-width: max-content;'>"
-                    num_carr = altura_carreiras - y
-                    dir = "⬅️" if "Plana" in tipo_peca and num_carr % 2 == 0 else "➔"
-                    html_grid += f"<div style='width: 50px; text-align: right; font-size: 12px; margin-right: 5px; color: #888;'>C {num_carr} {dir}</div>"
-                    
-                    for x in range(largura_pontos):
-                        rgb = pixels[x, y]
-                        num_cor = cores_encontradas[rgb]
-                        hex_color = '#{:02x}{:02x}{:02x}'.format(rgb[0], rgb[1], rgb[2])
-                        brilho = (rgb[0]*299 + rgb[1]*587 + rgb[2]*114)/1000
-                        cor_texto = "black" if brilho > 128 else "white"
-                        
-                        if "Sequência" in estilo_texto:
-                            ponto_na_carr = x + 1 if "Plana" in tipo_peca and num_carr % 2 == 0 else largura_pontos - x 
-                            numero_exibicao = str(((num_carr - 1) * largura_pontos) + ponto_na_carr)
-                            fnt_tela = "10px" if largura_pontos <= 40 else "0px"
-                            if len(numero_exibicao) >= 4 and largura_pontos <= 40: fnt_tela = "8px" 
-                        else:
-                            numero_exibicao = str(num_cor)
-                            fnt_tela = "12px" if largura_pontos <= 40 else "0px"
-
-                        tam_tela = "25px" if largura_pontos <= 40 else "12px"
-                        html_grid += f"<div style='background-color: {hex_color}; color: {cor_texto}; width: {tam_tela}; height: {tam_tela}; display: flex; align-items: center; justify-content: center; font-size: {fnt_tela}; font-weight: bold; border-radius: 2px;'>{numero_exibicao}</div>"
-                        
-                        x0, y0 = (x * tamanho_quadrado) + margem, (y * tamanho_quadrado) + margem
-                        draw.rectangle([x0, y0, x0+tamanho_quadrado, y0+tamanho_quadrado], fill=rgb, outline="black")
-                        if largura_pontos <= 100: draw.text((x0 + 5, y0 + 10), numero_exibicao, fill=cor_texto)
-
-                    html_grid += "</div>"
-                html_grid += "</div>"
-                
-                for y_line in range(0, altura_carreiras + 1, 5):
-                    yp = (y_line * tamanho_quadrado) + margem
-                    draw.line([(margem, yp), (largura_img - margem, yp)], fill="red", width=3)
-                    
-                for x_line in range(0, largura_pontos + 1, 5):
-                    xp = (x_line * tamanho_quadrado) + margem
-                    draw.line([(xp, margem), (xp, altura_img - margem)], fill="red", width=3)
-
-                for y_num in range(altura_carreiras):
-                    num_carr = altura_carreiras - y_num
-                    dir = "<-" if "Plana" in tipo_peca and num_carr % 2 == 0 else "->"
-                    y_pos = (y_num * tamanho_quadrado) + margem + 12
-                    draw.text((10, y_pos), f"C{num_carr} {dir}", fill="black")
-                    draw.text((largura_img - margem + 10, y_pos), f"C{num_carr} {dir}", fill="black")
-
-                for x_num in range(largura_pontos):
-                    if (x_num + 1) % 5 == 0 or x_num == 0 or x_num == largura_pontos - 1:
-                        x_pos = (x_num * tamanho_quadrado) + margem + 15
-                        draw.text((x_pos, margem - 25), str(x_num + 1), fill="black")
-                        draw.text((x_pos, altura_img - margem + 10), str(x_num + 1), fill="black")
-                
-                buf = io.BytesIO()
-                img_download.save(buf, format="PNG")
-                st.download_button("📥 Baixar Tabuleiro (PNG)", data=buf.getvalue(), file_name="grafico_regua.png", mime="image/png", type="secondary")
-                
-                st.write("### Visualização Rápida")
-                st.markdown(html_grid, unsafe_allow_html=True)
-            except Exception as e: st.error(f"Erro: {e}")
+            st.session_state.grafico_ativo = True
+            st.session_state.ponto_parada = 1
         else:
             st.warning("⚠️ Forneça uma imagem ou configure um padrão primeiro.")
+
+    # ==========================================
+    # LÓGICA DO MODO FOCO E RENDERIZAÇÃO
+    # ==========================================
+    if st.session_state.grafico_ativo and img_processada is not None:
+        try:
+            st.image(img_processada, caption=f"Prévia ({largura_pontos}x{altura_carreiras})", width=250)
+            
+            total_pontos = int(largura_pontos * altura_carreiras)
+            
+            # --- CAIXA DE DIGITAÇÃO DO PONTO EXATO ---
+            st.write("---")
+            st.write("### 📍 Onde você parou?")
+            st.write("Digite o número exato do ponto. O gráfico apagará os pontos futuros e destacará onde a agulha deve ir agora.")
+            
+            st.session_state.ponto_parada = st.number_input(
+                "Ponto de Parada Atual:", 
+                min_value=1, 
+                max_value=total_pontos, 
+                value=st.session_state.ponto_parada,
+                step=1
+            )
+            st.progress(st.session_state.ponto_parada / total_pontos, text=f"Progresso: {st.session_state.ponto_parada} de {total_pontos} pontos")
+            
+            pixels = img_processada.load()
+            cores_encontradas = {}
+            contador_cores = 1
+            for y in range(altura_carreiras):
+                for x in range(largura_pontos):
+                    rgb = pixels[x, y]
+                    if rgb not in cores_encontradas:
+                        cores_encontradas[rgb] = contador_cores
+                        contador_cores += 1
+
+            # --- RENDERIZAÇÃO DO TABULEIRO INTERATIVO NA TELA ---
+            html_grid = "<div style='display: flex; flex-direction: column; gap: 2px; overflow-x: auto; padding: 10px; background-color: #1E1E1E; border-radius: 10px;'>"
+            for y in range(altura_carreiras):
+                html_grid += "<div style='display: flex; gap: 1px; min-width: max-content;'>"
+                num_carr = altura_carreiras - y
+                dir = "⬅️" if "Plana" in tipo_peca and num_carr % 2 == 0 else "➔"
+                html_grid += f"<div style='width: 50px; text-align: right; font-size: 12px; margin-right: 5px; color: #888; align-self: center;'>C {num_carr} {dir}</div>"
+                
+                for x in range(largura_pontos):
+                    # Calcula o número absoluto do ponto na peça toda
+                    ponto_na_carr = x + 1 if "Plana" in tipo_peca and num_carr % 2 == 0 else largura_pontos - x 
+                    ponto_absoluto = ((num_carr - 1) * largura_pontos) + ponto_na_carr
+                    
+                    rgb = pixels[x, y]
+                    num_cor = cores_encontradas[rgb]
+                    hex_color = '#{:02x}{:02x}{:02x}'.format(rgb[0], rgb[1], rgb[2])
+                    brilho = (rgb[0]*299 + rgb[1]*587 + rgb[2]*114)/1000
+                    cor_texto = "black" if brilho > 128 else "white"
+                    
+                    if "Sequência" in estilo_texto:
+                        numero_exibicao = str(ponto_absoluto)
+                        fnt_tela = "10px" if largura_pontos <= 40 else "0px"
+                        if len(numero_exibicao) >= 4 and largura_pontos <= 40: fnt_tela = "8px" 
+                    else:
+                        numero_exibicao = str(num_cor)
+                        fnt_tela = "12px" if largura_pontos <= 40 else "0px"
+
+                    tam_tela = "25px" if largura_pontos <= 40 else "12px"
+                    
+                    # O SEGREDO DO MODO FOCO: Cores normais antes, Vermelho no exato momento, Transparente depois
+                    if ponto_absoluto == st.session_state.ponto_parada:
+                        estilo = f"opacity: 1; transform: scale(1.3); z-index: 50; border: 3px solid red; box-shadow: 0 0 10px red; border-radius: 4px;"
+                    elif ponto_absoluto < st.session_state.ponto_parada:
+                        estilo = "opacity: 0.9; border-radius: 2px;"
+                    else:
+                        estilo = "opacity: 0.2; border-radius: 2px;"
+                        
+                    html_grid += f"<div style='background-color: {hex_color}; color: {cor_texto}; width: {tam_tela}; height: {tam_tela}; display: flex; align-items: center; justify-content: center; font-size: {fnt_tela}; font-weight: bold; transition: 0.2s; {estilo}'>{numero_exibicao}</div>"
+                    
+                html_grid += "</div>"
+            html_grid += "</div>"
+            
+            st.write("### Tabuleiro Interativo (Modo Foco)")
+            st.markdown(html_grid, unsafe_allow_html=True)
+            
+            # --- RENDERIZAÇÃO DA IMAGEM ESTÁTICA PARA DOWNLOAD ---
+            tamanho_quadrado = 40 
+            margem = 60 
+            largura_img = (largura_pontos * tamanho_quadrado) + (margem * 2)
+            altura_img = (altura_carreiras * tamanho_quadrado) + (margem * 2)
+            
+            img_download = Image.new('RGB', (largura_img, altura_img), color='white')
+            draw = ImageDraw.Draw(img_download)
+            
+            for y in range(altura_carreiras):
+                for x in range(largura_pontos):
+                    rgb = pixels[x, y]
+                    x0, y0 = (x * tamanho_quadrado) + margem, (y * tamanho_quadrado) + margem
+                    draw.rectangle([x0, y0, x0+tamanho_quadrado, y0+tamanho_quadrado], fill=rgb, outline="black")
+                    
+                    if largura_pontos <= 100:
+                        num_cor = cores_encontradas[rgb]
+                        brilho = (rgb[0]*299 + rgb[1]*587 + rgb[2]*114)/1000
+                        cor_texto_dl = "black" if brilho > 128 else "white"
+                        
+                        if "Sequência" in estilo_texto:
+                            num_carr = altura_carreiras - y
+                            ponto_na_carr = x + 1 if "Plana" in tipo_peca and num_carr % 2 == 0 else largura_pontos - x
+                            numero_dl = str(((num_carr - 1) * largura_pontos) + ponto_na_carr)
+                        else:
+                            numero_dl = str(num_cor)
+                            
+                        draw.text((x0 + 5, y0 + 10), numero_dl, fill=cor_texto_dl)
+
+            for y_line in range(0, altura_carreiras + 1, 5):
+                yp = (y_line * tamanho_quadrado) + margem
+                draw.line([(margem, yp), (largura_img - margem, yp)], fill="red", width=3)
+                
+            for x_line in range(0, largura_pontos + 1, 5):
+                xp = (x_line * tamanho_quadrado) + margem
+                draw.line([(xp, margem), (xp, altura_img - margem)], fill="red", width=3)
+
+            for y_num in range(altura_carreiras):
+                num_carr = altura_carreiras - y_num
+                dir = "<-" if "Plana" in tipo_peca and num_carr % 2 == 0 else "->"
+                y_pos = (y_num * tamanho_quadrado) + margem + 12
+                draw.text((10, y_pos), f"C{num_carr} {dir}", fill="black")
+                draw.text((largura_img - margem + 10, y_pos), f"C{num_carr} {dir}", fill="black")
+
+            for x_num in range(largura_pontos):
+                if (x_num + 1) % 5 == 0 or x_num == 0 or x_num == largura_pontos - 1:
+                    x_pos = (x_num * tamanho_quadrado) + margem + 15
+                    draw.text((x_pos, margem - 25), str(x_num + 1), fill="black")
+                    draw.text((x_pos, altura_img - margem + 10), str(x_num + 1), fill="black")
+            
+            buf = io.BytesIO()
+            img_download.save(buf, format="PNG")
+            st.download_button("📥 Baixar Tabuleiro (PNG)", data=buf.getvalue(), file_name="grafico_regua.png", mime="image/png", type="secondary")
+
+        except Exception as e: st.error(f"Erro: {e}")
 
     st.divider()
 
@@ -395,3 +452,4 @@ with tab_gestao:
             st.write("---")
     else:
         st.info("Seu inventário está vazio. Registre sua primeira compra acima.")
+
