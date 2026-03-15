@@ -8,6 +8,25 @@ from datetime import datetime
 import math 
 
 # ==========================================
+# CONFIGURAÇÃO DA PÁGINA E BLINDAGEM DO CELULAR
+# ==========================================
+st.set_page_config(page_title="Estúdio de Crochê Pro", layout="centered")
+
+st.markdown("""
+<style>
+    /* BLOQUEAR O PULL-TO-REFRESH NO CELULAR (Não recarrega perdendo dados) */
+    html, body, .stApp {
+        overscroll-behavior-y: contain; 
+        overflow-y: auto;
+    }
+    /* Esconder elementos do Streamlit para parecer App Nativo */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+</style>
+""", unsafe_allow_html=True)
+
+# ==========================================
 # INICIALIZAÇÃO DA MEMÓRIA TEMPORÁRIA (SESSÃO)
 # ==========================================
 if 'ponto_parada' not in st.session_state:
@@ -34,11 +53,6 @@ def guardar_bd(dados):
         json.dump(dados, f, indent=4)
 
 bd = carregar_bd()
-
-# ==========================================
-# CONFIGURAÇÃO DA PÁGINA
-# ==========================================
-st.set_page_config(page_title="Estúdio de Crochê Pro", layout="centered")
 
 st.title("🧶 Estúdio de Crochê Pro")
 st.write("Gere gráficos, controle o inventário e exporte os seus relatórios financeiros.")
@@ -99,23 +113,44 @@ with tab_gerador:
 
     else:
         st.write("#### Configure seu Padrão Gerado")
-        categoria_padrao = st.selectbox("📁 Escolha a Categoria:", ["Geométricos Clássicos", "Símbolos e Arte"])
+        categoria_padrao = st.selectbox("📁 Escolha a Categoria:", ["Geométricos Clássicos", "Símbolos e Arte", "Times Paulistas"])
         
         if categoria_padrao == "Geométricos Clássicos":
             lista_padroes = ["Xadrez 2x2 (Bloquinhos)", "Xadrez 1x1 (Xadrezinho fino)", "Listras Horizontais", "Listras Verticais", "Diagonal (Escadinha)", "Tijolinhos", "Ziguezague (Chevron)", "Bolinhas (Poá)", "Cruz Central (Única)", "Moldura / Borda", "Losangos"]
+        elif categoria_padrao == "Times Paulistas":
+            lista_padroes = ["Palmeiras", "São Paulo", "Corinthians", "Santos"]
         else:
             lista_padroes = ["Folha (Arte Botânica)", "Coração (Pixel Art)"]
             
         padrao_geometrico = st.selectbox("✨ Selecione o desenho:", lista_padroes)
         
         col_tam1, col_tam2 = st.columns(2)
-        with col_tam1: largura_pontos = st.number_input("Largura (Pontos)", min_value=10, value=30) 
-        with col_tam2: altura_carreiras = st.number_input("Altura (Carreiras)", min_value=10, value=30)
+        with col_tam1: largura_pontos = st.number_input("Largura (Pontos)", min_value=10, value=40) 
+        with col_tam2: altura_carreiras = st.number_input("Altura (Carreiras)", min_value=10, value=40)
         
         st.write("Escolha as 2 cores do seu padrão:")
+        
+        # Inteligência para sugerir as cores certas dos times
+        cor_fundo_default = "#2C2C2C"
+        cor_desenho_default = "#FFD700"
+        if padrao_geometrico == "Palmeiras": 
+            cor_fundo_default = "#006400" # Verde Escuro
+            cor_desenho_default = "#FFFFFF" # Branco
+        elif padrao_geometrico == "São Paulo":
+            cor_fundo_default = "#FFFFFF" # Branco
+            cor_desenho_default = "#FF0000" # Vermelho
+        elif padrao_geometrico == "Corinthians":
+            cor_fundo_default = "#000000" # Preto
+            cor_desenho_default = "#FFFFFF" # Branco
+        elif padrao_geometrico == "Santos":
+            cor_fundo_default = "#FFFFFF" # Branco
+            cor_desenho_default = "#000000" # Preto
+        elif padrao_geometrico == "Folha (Arte Botânica)":
+            cor_desenho_default = "#00FF00"
+            
         col_cor1, col_cor2 = st.columns(2)
-        with col_cor1: cor1_hex = st.color_picker("Cor 1 (Fundo)", "#2C2C2C")
-        with col_cor2: cor2_hex = st.color_picker("Cor 2 (Desenho)", "#00FF00" if padrao_geometrico == "Folha (Arte Botânica)" else "#FFD700")
+        with col_cor1: cor1_hex = st.color_picker("Cor 1 (Fundo)", cor_fundo_default)
+        with col_cor2: cor2_hex = st.color_picker("Cor 2 (Desenho)", cor_desenho_default)
         
         img_processada = Image.new('RGB', (largura_pontos, altura_carreiras))
         pixels_geo = img_processada.load()
@@ -148,6 +183,52 @@ with tab_gerador:
                     cx, cy, escala = largura_pontos / 2, altura_carreiras / 2, min(largura_pontos, altura_carreiras) / 2.5
                     vx, vy = (x - cx) / escala, (cy - y) / (escala * 1.1)
                     pixels_geo[x, y] = rgb2 if (vx**2 + vy**2 - 1)**3 - (vx**2) * (vy**3) <= 0 else rgb1
+                
+                # MATEMÁTICA DOS TIMES PAULISTAS:
+                elif padrao_geometrico == "Palmeiras":
+                    cx, cy = largura_pontos / 2, altura_carreiras / 2
+                    r = min(largura_pontos, altura_carreiras) * 0.4
+                    dist = math.hypot(x - cx, y - cy)
+                    is_logo = False
+                    if r * 0.75 <= dist <= r: is_logo = True  # Anel externo
+                    elif cx - r*0.3 <= x <= cx - r*0.1 and cy - r*0.5 <= y <= cy + r*0.5: is_logo = True # P vertical
+                    elif (x - cx + r*0.1)**2 + (y - cy + r*0.2)**2 <= (r*0.3)**2 and x >= cx - r*0.1:
+                        if (x - cx + r*0.1)**2 + (y - cy + r*0.2)**2 >= (r*0.15)**2: is_logo = True # P barriga
+                    pixels_geo[x, y] = rgb2 if is_logo else rgb1
+                    
+                elif padrao_geometrico == "São Paulo":
+                    cx, cy = largura_pontos / 2, altura_carreiras / 2
+                    r = min(largura_pontos, altura_carreiras) * 0.45
+                    is_logo = False
+                    if cy - r <= y <= cy - r*0.3 and cx - r <= x <= cx + r: is_logo = True # Topo
+                    elif cy - r*0.3 < y <= cy + r and abs(x - cx) <= (cy + r - y) * 0.8: is_logo = True # Base do escudo
+                    if is_logo and cy - r*0.6 <= y <= cy - r*0.4: is_logo = False # Faixa vazada SPFC
+                    pixels_geo[x, y] = rgb2 if is_logo else rgb1
+                    
+                elif padrao_geometrico == "Corinthians":
+                    cx, cy = largura_pontos / 2, altura_carreiras / 2
+                    r = min(largura_pontos, altura_carreiras) * 0.35
+                    dist = math.hypot(x - cx, y - cy)
+                    is_logo = False
+                    if r * 0.8 <= dist <= r: is_logo = True # Anel
+                    elif abs(x - cx) < r*0.15 and cy - r*1.3 <= y <= cy + r*1.3: is_logo = True # Ancora vert
+                    elif abs(y - cy) < r*0.15 and cx - r*1.3 <= x <= cx + r*1.3: is_logo = True # Ancora horiz
+                    if dist < r * 0.6: is_logo = True # Centro
+                    if dist < r * 0.4: is_logo = False # Furo do centro
+                    pixels_geo[x, y] = rgb2 if is_logo else rgb1
+                    
+                elif padrao_geometrico == "Santos":
+                    cx, cy = largura_pontos / 2, altura_carreiras / 2
+                    r = min(largura_pontos, altura_carreiras) * 0.45
+                    is_logo = False
+                    if cx - r <= x <= cx + r and cy - r <= y <= cy + r*0.2: is_logo = True # Corpo
+                    elif (x - cx)**2 + (y - cy - r*0.2)**2 <= r**2 and y > cy + r*0.2: is_logo = True # Fundo redondo
+                    if is_logo:
+                        # Faixas verticais
+                        if y > cy - r*0.4 and int((x - cx + r) / (r*0.35)) % 2 == 1: is_logo = False
+                        # Faixa horizontal no topo
+                        if cy - r*0.8 <= y <= cy - r*0.6: is_logo = False
+                    pixels_geo[x, y] = rgb2 if is_logo else rgb1
 
     st.divider()
     st.write("### O que mostrar dentro dos quadradinhos?")
@@ -246,9 +327,9 @@ with tab_gerador:
                     
                     # Define a ordem de leitura (X) dependendo da direção
                     if "Plana" in tipo_peca and num_carr % 2 == 0:
-                        range_x = range(largura_pontos) # Da esquerda pra direita (invertido no código)
+                        range_x = range(largura_pontos) 
                     else:
-                        range_x = range(largura_pontos - 1, -1, -1) # Padrão: da direita pra esquerda
+                        range_x = range(largura_pontos - 1, -1, -1) 
                     
                     sequencia_carreira = []
                     cor_atual = None
