@@ -75,7 +75,6 @@ with tab_gerador:
         ])
 
     st.write("### Como deseja criar o desenho?")
-    # NOVIDADE AQUI: A OPÇÃO DE ESCREVER NOME!
     modo_entrada = st.radio("", ["📸 Subir Imagem / Buscar", "🔤 Escrever Nome (Letreiro)", "📐 Gerar Padrão (Formas Perfeitas)"])
 
     largura_pontos = 20
@@ -118,7 +117,7 @@ with tab_gerador:
             if not is_radial:
                 img_base = img_base.resize((largura_pontos, altura_carreiras), Image.Resampling.NEAREST)
 
-    # --- NOVO MOTOR DE LETREIROS / NOMES ---
+    # --- NOVO MOTOR DE LETREIROS COM CORREÇÃO PARA O MODO RADIAL ---
     elif modo_entrada == "🔤 Escrever Nome (Letreiro)":
         st.write("### 🔤 Gerador de Nomes em Pixel Art")
         st.info("Digite um nome. O aplicativo criará o gráfico perfeitamente alinhado para os seus pontos de crochê!")
@@ -135,19 +134,34 @@ with tab_gerador:
             largura_base = (len(texto_usuario) * 6) + 4
             altura_base = 13
             
-            # Cria a imagem pequenininha baseada nos pixels
             img_txt = Image.new('RGB', (largura_base, altura_base), color=cor_fundo_txt)
             draw_txt = ImageDraw.Draw(img_txt)
             draw_txt.text((2, 1), texto_usuario, fill=cor_letra_txt)
             
-            # Amplia a imagem mantendo os quadrados perfeitos (Sem embaçar)
-            largura_pontos = largura_base * escala_texto
-            altura_carreiras = altura_base * escala_texto
+            img_resized_txt = img_txt.resize((largura_base * escala_texto, altura_base * escala_texto), Image.Resampling.NEAREST)
             
-            img_base = img_txt.resize((largura_pontos, altura_carreiras), Image.Resampling.NEAREST)
-            st.success(f"**Tamanho ideal gerado automaticamente:** {largura_pontos} pontos x {altura_carreiras} carreiras.")
+            if is_radial:
+                # SE ESTIVER NO MODO PORTA COPO: Cola o nome no centro de uma tela gigante 200x200
+                img_base = Image.new('RGB', (200, 200), color=cor_fundo_txt)
+                
+                # Impede que o nome seja maior que a tela do porta-copo para não quebrar
+                if img_resized_txt.width > 200 or img_resized_txt.height > 200:
+                    st.warning("⚠️ O nome ficou muito grande para o Porta-Copo! Diminua a espessura ou o tamanho do nome.")
+                    img_resized_txt = img_resized_txt.crop((0, 0, 200, 200))
 
-    # --- FORMAS MATEMÁTICAS PERFEITAS (LIMPO E EFICIENTE) ---
+                offset_x = max(0, (200 - img_resized_txt.width) // 2)
+                offset_y = max(0, (200 - img_resized_txt.height) // 2)
+                
+                img_base.paste(img_resized_txt, (offset_x, offset_y))
+                st.success("✅ O nome foi centralizado com sucesso dentro do molde circular do Porta-copo!")
+            else:
+                # SE FOR MODO PLANO: Segue o tamanho exato da palavra
+                img_base = img_resized_txt
+                largura_pontos = largura_base * escala_texto
+                altura_carreiras = altura_base * escala_texto
+                st.success(f"**Tamanho ideal gerado automaticamente:** {largura_pontos} pontos x {altura_carreiras} carreiras.")
+
+    # --- FORMAS MATEMÁTICAS PERFEITAS ---
     else:
         st.write("### 📐 Padrões Geométricos Perfeitos")
         st.write("Estas formas foram desenhadas na matemática exata para nunca ficarem tortas na sua agulha.")
@@ -505,4 +519,3 @@ with tab_gestao:
             if percentagem <= 20: st.warning(f"⚠️ Atenção: O estoque do fio '{nome}' está no fim!")
             st.write("---")
     else: st.info("Seu inventário está vazio. Registre sua primeira compra acima.")
-
