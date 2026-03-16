@@ -1,5 +1,5 @@
 import streamlit as st
-from PIL import Image, ImageDraw, ImageColor
+from PIL import Image, ImageDraw, ImageColor, ImageFont
 import io
 import json
 import os
@@ -75,7 +75,8 @@ with tab_gerador:
         ])
 
     st.write("### Como deseja criar o desenho?")
-    modo_entrada = st.radio("", ["📸 Subir Imagem / Buscar na Internet", "📐 Gerar Padrão Matemático (Automático)"])
+    # NOVIDADE AQUI: A OPÇÃO DE ESCREVER NOME!
+    modo_entrada = st.radio("", ["📸 Subir Imagem / Buscar", "🔤 Escrever Nome (Letreiro)", "📐 Gerar Padrão (Formas Perfeitas)"])
 
     largura_pontos = 20
     altura_carreiras = 20
@@ -91,7 +92,7 @@ with tab_gerador:
         largura_pontos = 200
         altura_carreiras = 200
 
-    if modo_entrada == "📸 Subir Imagem / Buscar na Internet":
+    if modo_entrada == "📸 Subir Imagem / Buscar":
         st.write("### 🔍 Busca Inteligente")
         termo_busca = st.text_input("Ex: Escudo do Palmeiras, Super Mario")
         if termo_busca:
@@ -116,23 +117,59 @@ with tab_gerador:
             img_base = img_temp.quantize(colors=num_cores).convert('RGB')
             if not is_radial:
                 img_base = img_base.resize((largura_pontos, altura_carreiras), Image.Resampling.NEAREST)
+
+    # --- NOVO MOTOR DE LETREIROS / NOMES ---
+    elif modo_entrada == "🔤 Escrever Nome (Letreiro)":
+        st.write("### 🔤 Gerador de Nomes em Pixel Art")
+        st.info("Digite um nome. O aplicativo criará o gráfico perfeitamente alinhado para os seus pontos de crochê!")
+        
+        texto_usuario = st.text_input("Digite o nome ou palavra:", "PABLO").upper()
+        escala_texto = st.slider("Espessura / Tamanho da Letra", min_value=1, max_value=5, value=2)
+        
+        col_c1, col_c2 = st.columns(2)
+        with col_c1: cor_fundo_txt = st.color_picker("Cor do Fundo", "#2C2C2C")
+        with col_c2: cor_letra_txt = st.color_picker("Cor da Letra", "#F59E0B")
+        
+        if texto_usuario:
+            # A fonte bitmap padrão do Python tem aprox 6x11 pixels por letra
+            largura_base = (len(texto_usuario) * 6) + 4
+            altura_base = 13
+            
+            # Cria a imagem pequenininha baseada nos pixels
+            img_txt = Image.new('RGB', (largura_base, altura_base), color=cor_fundo_txt)
+            draw_txt = ImageDraw.Draw(img_txt)
+            draw_txt.text((2, 1), texto_usuario, fill=cor_letra_txt)
+            
+            # Amplia a imagem mantendo os quadrados perfeitos (Sem embaçar)
+            largura_pontos = largura_base * escala_texto
+            altura_carreiras = altura_base * escala_texto
+            
+            img_base = img_txt.resize((largura_pontos, altura_carreiras), Image.Resampling.NEAREST)
+            st.success(f"**Tamanho ideal gerado automaticamente:** {largura_pontos} pontos x {altura_carreiras} carreiras.")
+
+    # --- FORMAS MATEMÁTICAS PERFEITAS (LIMPO E EFICIENTE) ---
     else:
-        categoria_padrao = st.selectbox("📁 Escolha a Categoria:", ["Geométricos Clássicos", "Times Paulistas", "Símbolos"])
-        lista_padroes = ["Xadrez 2x2", "Bolinhas"]
-        if categoria_padrao == "Times Paulistas": lista_padroes = ["Palmeiras", "São Paulo", "Corinthians", "Santos"]
-        elif categoria_padrao == "Símbolos": lista_padroes = ["Folha", "Coração"]
-        padrao_geometrico = st.selectbox("✨ Selecione o desenho:", lista_padroes)
+        st.write("### 📐 Padrões Geométricos Perfeitos")
+        st.write("Estas formas foram desenhadas na matemática exata para nunca ficarem tortas na sua agulha.")
+        
+        padrao_geometrico = st.selectbox("✨ Selecione o desenho:", [
+            "Xadrez 2x2 (Bloquinhos)", 
+            "Xadrez 1x1 (Fino)", 
+            "Listras Horizontais", 
+            "Listras Verticais", 
+            "Diagonal (Escadinha)", 
+            "Ziguezague (Chevron)", 
+            "Moldura / Borda", 
+            "Coração (Pixel Art Perfeito)"
+        ])
         
         if not is_radial:
             col_tam1, col_tam2 = st.columns(2)
-            with col_tam1: largura_pontos = st.number_input("Largura (Pts)", min_value=10, value=40) 
-            with col_tam2: altura_carreiras = st.number_input("Altura (Carr)", min_value=10, value=40)
+            with col_tam1: largura_pontos = st.number_input("Largura (Pts)", min_value=10, value=30) 
+            with col_tam2: altura_carreiras = st.number_input("Altura (Carr)", min_value=10, value=30)
             
-        cor_f1, cor_d1 = "#2C2C2C", "#FFD700"
-        if padrao_geometrico == "Palmeiras": cor_f1, cor_d1 = "#006400", "#FFFFFF"
-        elif padrao_geometrico == "São Paulo": cor_f1, cor_d1 = "#FFFFFF", "#FF0000"
-        elif padrao_geometrico == "Corinthians": cor_f1, cor_d1 = "#000000", "#FFFFFF"
-        elif padrao_geometrico == "Santos": cor_f1, cor_d1 = "#FFFFFF", "#000000"
+        cor_f1 = "#2C2C2C"
+        cor_d1 = "#FF0000" if "Coração" in padrao_geometrico else "#FFD700"
         
         col_c1, col_c2 = st.columns(2)
         with col_c1: cor1_hex = st.color_picker("Cor 1 (Fundo)", cor_f1)
@@ -145,33 +182,18 @@ with tab_gerador:
         for y in range(altura_carreiras):
             for x in range(largura_pontos):
                 cx, cy = largura_pontos / 2, altura_carreiras / 2
-                r = min(largura_pontos, altura_carreiras) * 0.4
-                dist = math.hypot(x - cx, y - cy)
                 
-                if padrao_geometrico == "Palmeiras":
-                    is_logo = False
-                    if r * 0.75 <= dist <= r: is_logo = True  
-                    elif cx - r*0.3 <= x <= cx - r*0.1 and cy - r*0.5 <= y <= cy + r*0.5: is_logo = True 
-                    elif (x - cx + r*0.1)**2 + (y - cy + r*0.2)**2 <= (r*0.3)**2 and x >= cx - r*0.1:
-                        if (x - cx + r*0.1)**2 + (y - cy + r*0.2)**2 >= (r*0.15)**2: is_logo = True 
-                    px[x, y] = rgb2 if is_logo else rgb1
-                elif padrao_geometrico == "São Paulo":
-                    is_logo = False
-                    if cy - r <= y <= cy - r*0.3 and cx - r <= x <= cx + r: is_logo = True 
-                    elif cy - r*0.3 < y <= cy + r and abs(x - cx) <= (cy + r - y) * 0.8: is_logo = True 
-                    if is_logo and cy - r*0.6 <= y <= cy - r*0.4: is_logo = False 
-                    px[x, y] = rgb2 if is_logo else rgb1
-                elif padrao_geometrico == "Corinthians":
-                    r_cor = r * 0.85
-                    is_logo = False
-                    if r_cor * 0.8 <= dist <= r_cor: is_logo = True 
-                    elif abs(x - cx) < r_cor*0.15 and cy - r_cor*1.3 <= y <= cy + r_cor*1.3: is_logo = True 
-                    elif abs(y - cy) < r_cor*0.15 and cx - r_cor*1.3 <= x <= cx + r_cor*1.3: is_logo = True 
-                    if dist < r_cor * 0.6: is_logo = True 
-                    if dist < r_cor * 0.4: is_logo = False 
-                    px[x, y] = rgb2 if is_logo else rgb1
-                else:
-                    px[x, y] = rgb1 if (x+y)%2==0 else rgb2
+                if padrao_geometrico == "Xadrez 2x2 (Bloquinhos)": px[x, y] = rgb1 if (x // 2 + y // 2) % 2 == 0 else rgb2
+                elif padrao_geometrico == "Xadrez 1x1 (Fino)": px[x, y] = rgb1 if (x + y) % 2 == 0 else rgb2
+                elif padrao_geometrico == "Listras Horizontais": px[x, y] = rgb1 if (y // 2) % 2 == 0 else rgb2
+                elif padrao_geometrico == "Listras Verticais": px[x, y] = rgb1 if (x // 2) % 2 == 0 else rgb2
+                elif padrao_geometrico == "Diagonal (Escadinha)": px[x, y] = rgb1 if (x + y) % 3 == 0 else rgb2
+                elif padrao_geometrico == "Ziguezague (Chevron)": px[x, y] = rgb2 if (x + y) % 4 == 0 or (x - y) % 4 == 0 else rgb1
+                elif padrao_geometrico == "Moldura / Borda": px[x, y] = rgb2 if x < 2 or x > largura_pontos - 3 or y < 2 or y > altura_carreiras - 3 else rgb1
+                elif padrao_geometrico == "Coração (Pixel Art Perfeito)":
+                    escala = min(largura_pontos, altura_carreiras) / 2.5
+                    vx, vy = (x - cx) / escala, (cy - y) / (escala * 1.1)
+                    px[x, y] = rgb2 if (vx**2 + vy**2 - 1)**3 - (vx**2) * (vy**3) <= 0 else rgb1
 
     # --- O MOTOR RADIAL DE COORDENADAS POLARES ---
     radial_map = {}
@@ -331,7 +353,6 @@ with tab_gerador:
 
                 st.download_button("💾 Baixar Receita em Texto", data=txt_rec, file_name="minha_receita.txt")
 
-            # MANTIDO O DOWNLOAD DA RÉGUA EM PNG (Apenas para peças planas)
             if not is_radial:
                 tamanho_quadrado = 40 
                 margem = 60 
@@ -384,7 +405,7 @@ with tab_gerador:
     st.divider()
 
     # ==========================================
-    # INTEGRAÇÃO FINANCEIRA COM INVENTÁRIO (RESTAURADO!)
+    # INTEGRAÇÃO FINANCEIRA COM INVENTÁRIO
     # ==========================================
     st.header("💰 Parte 2: Orçamento Integrado")
     metros_gastos = total_pontos * 0.045
@@ -443,7 +464,7 @@ with tab_gerador:
                 st.error("⚠️ Atenção: Você não tem metros suficientes no estoque para produzir esta peça!")
 
 # ==========================================
-# SEPARADOR 2: GESTÃO E RELATÓRIOS (RESTAURADO!)
+# SEPARADOR 2: GESTÃO E RELATÓRIOS
 # ==========================================
 with tab_gestao:
     st.header("📦 Gestão de Estoque e Finanças")
@@ -484,3 +505,4 @@ with tab_gestao:
             if percentagem <= 20: st.warning(f"⚠️ Atenção: O estoque do fio '{nome}' está no fim!")
             st.write("---")
     else: st.info("Seu inventário está vazio. Registre sua primeira compra acima.")
+
