@@ -70,14 +70,38 @@ with tab_gerador:
                           "Plana (Ida e Volta - Ex: Tapete, Blusa)"])
 
     st.write("### Como deseja criar o desenho?")
-    modo_entrada = st.radio("", ["📸 Subir Imagem do Celular", "📐 Gerar Padrão Matemático (Automático)"])
+    modo_entrada = st.radio("", ["📸 Subir Imagem / Buscar na Internet", "📐 Gerar Padrão Matemático (Automático)"])
 
     largura_pontos = 20
     altura_carreiras = 20
     img_processada = None
 
-    if modo_entrada == "📸 Subir Imagem do Celular":
-        imagem_carregada = st.file_uploader("Anexe o seu desenho aqui (png, jpg)", type=["png", "jpg", "jpeg"])
+    if modo_entrada == "📸 Subir Imagem / Buscar na Internet":
+        
+        # --- A NOVA CAIXINHA DE PESQUISA INTELIGENTE ---
+        st.write("### 🔍 Busca Inteligente de Moldes")
+        st.write("Digite o que quer tecer. Nós aplicamos os 'filtros secretos' para achar a imagem perfeita!")
+        
+        termo_busca = st.text_input("Ex: Escudo do Palmeiras, Super Mario, Flor")
+        
+        if termo_busca:
+            # Aqui é onde a mágica das palavras-chave acontece
+            termo_otimizado = f"{termo_busca} pixel art OR ponto cruz OR perler beads"
+            link_google = f"https://www.google.com/search?tbm=isch&q={termo_otimizado.replace(' ', '+')}"
+            link_pinterest = f"https://br.pinterest.com/search/pins/?q={termo_otimizado.replace(' ', '%20')}"
+            
+            # Gerando botões bonitos e nativos para abrir a pesquisa
+            st.markdown(f"""
+            <div style='display: flex; gap: 10px; margin-bottom: 10px;'>
+                <a href='{link_google}' target='_blank' style='background-color: #4285F4; color: white; padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold; width: 100%; text-align: center; font-size: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>🔍 Google Imagens</a>
+                <a href='{link_pinterest}' target='_blank' style='background-color: #E60023; color: white; padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold; width: 100%; text-align: center; font-size: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>📌 Pinterest</a>
+            </div>
+            """, unsafe_allow_html=True)
+            st.info("☝️ Clique em um dos botões, baixe a imagem no seu celular e anexe ela logo abaixo!")
+
+        st.divider()
+        st.write("### 📤 Anexe o seu desenho aqui:")
+        imagem_carregada = st.file_uploader("", type=["png", "jpg", "jpeg"])
         
         if imagem_carregada is not None:
             img_temp = Image.open(imagem_carregada).convert('RGB')
@@ -130,21 +154,20 @@ with tab_gerador:
         
         st.write("Escolha as 2 cores do seu padrão:")
         
-        # Inteligência para sugerir as cores certas dos times
         cor_fundo_default = "#2C2C2C"
         cor_desenho_default = "#FFD700"
         if padrao_geometrico == "Palmeiras": 
-            cor_fundo_default = "#006400" # Verde Escuro
-            cor_desenho_default = "#FFFFFF" # Branco
+            cor_fundo_default = "#006400" 
+            cor_desenho_default = "#FFFFFF" 
         elif padrao_geometrico == "São Paulo":
-            cor_fundo_default = "#FFFFFF" # Branco
-            cor_desenho_default = "#FF0000" # Vermelho
+            cor_fundo_default = "#FFFFFF" 
+            cor_desenho_default = "#FF0000" 
         elif padrao_geometrico == "Corinthians":
-            cor_fundo_default = "#000000" # Preto
-            cor_desenho_default = "#FFFFFF" # Branco
+            cor_fundo_default = "#000000" 
+            cor_desenho_default = "#FFFFFF" 
         elif padrao_geometrico == "Santos":
-            cor_fundo_default = "#FFFFFF" # Branco
-            cor_desenho_default = "#000000" # Preto
+            cor_fundo_default = "#FFFFFF" 
+            cor_desenho_default = "#000000" 
         elif padrao_geometrico == "Folha (Arte Botânica)":
             cor_desenho_default = "#00FF00"
             
@@ -183,50 +206,43 @@ with tab_gerador:
                     cx, cy, escala = largura_pontos / 2, altura_carreiras / 2, min(largura_pontos, altura_carreiras) / 2.5
                     vx, vy = (x - cx) / escala, (cy - y) / (escala * 1.1)
                     pixels_geo[x, y] = rgb2 if (vx**2 + vy**2 - 1)**3 - (vx**2) * (vy**3) <= 0 else rgb1
-                
-                # MATEMÁTICA DOS TIMES PAULISTAS:
                 elif padrao_geometrico == "Palmeiras":
                     cx, cy = largura_pontos / 2, altura_carreiras / 2
                     r = min(largura_pontos, altura_carreiras) * 0.4
                     dist = math.hypot(x - cx, y - cy)
                     is_logo = False
-                    if r * 0.75 <= dist <= r: is_logo = True  # Anel externo
-                    elif cx - r*0.3 <= x <= cx - r*0.1 and cy - r*0.5 <= y <= cy + r*0.5: is_logo = True # P vertical
+                    if r * 0.75 <= dist <= r: is_logo = True  
+                    elif cx - r*0.3 <= x <= cx - r*0.1 and cy - r*0.5 <= y <= cy + r*0.5: is_logo = True 
                     elif (x - cx + r*0.1)**2 + (y - cy + r*0.2)**2 <= (r*0.3)**2 and x >= cx - r*0.1:
-                        if (x - cx + r*0.1)**2 + (y - cy + r*0.2)**2 >= (r*0.15)**2: is_logo = True # P barriga
+                        if (x - cx + r*0.1)**2 + (y - cy + r*0.2)**2 >= (r*0.15)**2: is_logo = True 
                     pixels_geo[x, y] = rgb2 if is_logo else rgb1
-                    
                 elif padrao_geometrico == "São Paulo":
                     cx, cy = largura_pontos / 2, altura_carreiras / 2
                     r = min(largura_pontos, altura_carreiras) * 0.45
                     is_logo = False
-                    if cy - r <= y <= cy - r*0.3 and cx - r <= x <= cx + r: is_logo = True # Topo
-                    elif cy - r*0.3 < y <= cy + r and abs(x - cx) <= (cy + r - y) * 0.8: is_logo = True # Base do escudo
-                    if is_logo and cy - r*0.6 <= y <= cy - r*0.4: is_logo = False # Faixa vazada SPFC
+                    if cy - r <= y <= cy - r*0.3 and cx - r <= x <= cx + r: is_logo = True 
+                    elif cy - r*0.3 < y <= cy + r and abs(x - cx) <= (cy + r - y) * 0.8: is_logo = True 
+                    if is_logo and cy - r*0.6 <= y <= cy - r*0.4: is_logo = False 
                     pixels_geo[x, y] = rgb2 if is_logo else rgb1
-                    
                 elif padrao_geometrico == "Corinthians":
                     cx, cy = largura_pontos / 2, altura_carreiras / 2
                     r = min(largura_pontos, altura_carreiras) * 0.35
                     dist = math.hypot(x - cx, y - cy)
                     is_logo = False
-                    if r * 0.8 <= dist <= r: is_logo = True # Anel
-                    elif abs(x - cx) < r*0.15 and cy - r*1.3 <= y <= cy + r*1.3: is_logo = True # Ancora vert
-                    elif abs(y - cy) < r*0.15 and cx - r*1.3 <= x <= cx + r*1.3: is_logo = True # Ancora horiz
-                    if dist < r * 0.6: is_logo = True # Centro
-                    if dist < r * 0.4: is_logo = False # Furo do centro
+                    if r * 0.8 <= dist <= r: is_logo = True 
+                    elif abs(x - cx) < r*0.15 and cy - r*1.3 <= y <= cy + r*1.3: is_logo = True 
+                    elif abs(y - cy) < r*0.15 and cx - r*1.3 <= x <= cx + r*1.3: is_logo = True 
+                    if dist < r * 0.6: is_logo = True 
+                    if dist < r * 0.4: is_logo = False 
                     pixels_geo[x, y] = rgb2 if is_logo else rgb1
-                    
                 elif padrao_geometrico == "Santos":
                     cx, cy = largura_pontos / 2, altura_carreiras / 2
                     r = min(largura_pontos, altura_carreiras) * 0.45
                     is_logo = False
-                    if cx - r <= x <= cx + r and cy - r <= y <= cy + r*0.2: is_logo = True # Corpo
-                    elif (x - cx)**2 + (y - cy - r*0.2)**2 <= r**2 and y > cy + r*0.2: is_logo = True # Fundo redondo
+                    if cx - r <= x <= cx + r and cy - r <= y <= cy + r*0.2: is_logo = True 
+                    elif (x - cx)**2 + (y - cy - r*0.2)**2 <= r**2 and y > cy + r*0.2: is_logo = True 
                     if is_logo:
-                        # Faixas verticais
                         if y > cy - r*0.4 and int((x - cx + r) / (r*0.35)) % 2 == 1: is_logo = False
-                        # Faixa horizontal no topo
                         if cy - r*0.8 <= y <= cy - r*0.6: is_logo = False
                     pixels_geo[x, y] = rgb2 if is_logo else rgb1
 
@@ -310,9 +326,6 @@ with tab_gerador:
             st.write("### Tabuleiro Interativo (Modo Foco)")
             st.markdown(html_grid, unsafe_allow_html=True)
 
-            # ==========================================
-            # NOVIDADE: A RECEITA ESCRITA (TRADUTOR)
-            # ==========================================
             with st.expander("📝 Ver Receita Escrita (Passo a Passo)"):
                 st.write("Siga a receita ponto a ponto. O aplicativo já contou os blocos de cores para você!")
                 receita_texto_completa = "RECEITA DE CROCHÊ\n"
@@ -320,12 +333,10 @@ with tab_gerador:
                 receita_texto_completa += f"Tamanho: {largura_pontos} pontos x {altura_carreiras} carreiras\n"
                 receita_texto_completa += "-" * 30 + "\n\n"
                 
-                # Vamos ler da Carreira 1 até a última
                 for y in range(altura_carreiras - 1, -1, -1):
                     num_carr = altura_carreiras - y
                     dir_seta = "⬅️" if "Plana" in tipo_peca and num_carr % 2 == 0 else "➔"
                     
-                    # Define a ordem de leitura (X) dependendo da direção
                     if "Plana" in tipo_peca and num_carr % 2 == 0:
                         range_x = range(largura_pontos) 
                     else:
@@ -349,7 +360,6 @@ with tab_gerador:
                             cor_atual = num_cor
                             contagem = 1
                     
-                    # Salva a última cor da linha
                     if contagem > 0:
                         sequencia_carreira.append(f"{contagem}x Cor {cor_atual}")
                     
@@ -359,7 +369,6 @@ with tab_gerador:
 
                 st.download_button("💾 Baixar Receita em Texto", data=receita_texto_completa, file_name="minha_receita.txt", mime="text/plain", type="secondary")
 
-            # --- DOWNLOAD DA IMAGEM ESTÁTICA ---
             tamanho_quadrado = 40 
             margem = 60 
             largura_img, altura_img = (largura_pontos * tamanho_quadrado) + (margem * 2), (altura_carreiras * tamanho_quadrado) + (margem * 2)
@@ -512,4 +521,3 @@ with tab_gestao:
             if percentagem <= 20: st.warning(f"⚠️ Atenção: O estoque do fio '{nome}' está no fim!")
             st.write("---")
     else: st.info("Seu inventário está vazio. Registre sua primeira compra acima.")
-
