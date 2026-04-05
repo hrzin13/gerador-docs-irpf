@@ -47,7 +47,7 @@ def guardar_bd(dados):
 
 bd = carregar_bd()
 
-st.title("🧶 Estúdio de Crochê Pro - Motor Avançado")
+st.title("🧶 Estúdio de Crochê Pro 🌿 - Motor Avançado")
 
 tab_gerador, tab_gestao = st.tabs(["🎨 Gerador de Gráfico", "📊 Gestão, Inventário e Relatórios"])
 
@@ -500,8 +500,8 @@ with tab_gestao:
     with st.form("form_inventario", clear_on_submit=True):
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1: nome_fio = st.text_input("Nome/Cor do Fio")
-        with col_f2: preco_fio = st.number_input("Preço (R$)", min_value=0.01, step=0.50)
-        with col_f3: metros_fio = st.number_input("Metragem (m)", min_value=1.0, step=10.0)
+        with col_f2: preco_fio = st.number_input("Preço (R$)", min_value=0.0, value=18.00, step=0.50)
+        with col_f3: metros_fio = st.number_input("Metragem (m)", min_value=1.0, value=150.0, step=1.0)
         if st.form_submit_button("Guardar no Inventário"):
             if nome_fio:
                 bd["inventario"][nome_fio] = {"preco": preco_fio, "metros_total": metros_fio, "metros_restantes": metros_fio}
